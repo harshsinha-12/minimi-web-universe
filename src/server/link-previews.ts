@@ -1,7 +1,9 @@
 import { Parser } from "htmlparser2";
 import { createHash } from "node:crypto";
 import type { Message } from "../types";
+import { pageFingerprint } from "./page-text";
 import { fetchPreviewResource, previewURL } from "./preview-fetch";
+import { previewSentiment, type SentimentLabel } from "./source-chips";
 
 export type LinkPreview = {
   url: string;
@@ -9,6 +11,9 @@ export type LinkPreview = {
   description: string;
   domain: string;
   image: string | null;
+  excerpt: string;
+  textHash: string;
+  sentiment: { label: SentimentLabel; reason: string };
 };
 export function extractPreview(html: string, page: string): LinkPreview {
   const meta = new Map<string, string>();
@@ -43,21 +48,27 @@ export function extractPreview(html: string, page: string): LinkPreview {
   } catch {
     /* Text fallback for invalid images. */
   }
+  const resolvedTitle = (
+    meta.get("og:title") ||
+    meta.get("twitter:title") ||
+    title ||
+    new URL(page).hostname
+  ).slice(0, 220);
+  const description = (
+    meta.get("og:description") ||
+    meta.get("description") ||
+    ""
+  ).slice(0, 320);
+  const fingerprint = pageFingerprint(html);
   return {
     url: page,
     domain: new URL(page).hostname.replace(/^www\./, ""),
-    title: (
-      meta.get("og:title") ||
-      meta.get("twitter:title") ||
-      title ||
-      new URL(page).hostname
-    ).slice(0, 220),
-    description: (
-      meta.get("og:description") ||
-      meta.get("description") ||
-      ""
-    ).slice(0, 320),
+    title: resolvedTitle,
+    description,
     image,
+    excerpt: fingerprint.excerpt,
+    textHash: fingerprint.hash,
+    sentiment: previewSentiment(resolvedTitle, description),
   };
 }
 export function previewSources(message: Message) {
