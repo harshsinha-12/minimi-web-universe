@@ -36,6 +36,7 @@ import { annotateMarkdown } from "../ai/evidence";
 import { consumeEvents } from "../stream/sse";
 import { Cat } from "./Cat";
 import { SourcePreviews } from "./SourcePreviews";
+import { VoiceInput } from "./VoiceInput";
 
 type Bootstrap = {
   conversations: Conversation[];
@@ -838,6 +839,18 @@ export default function ChatApp() {
                     <span className="model-label">
                       Thoughtful by nature <Sparkles size={12} />
                     </span>
+                    <VoiceInput
+                      disabled={!boot}
+                      onTranscript={(transcript) => {
+                        setText((current) =>
+                          current.trim()
+                            ? `${current.trim()} ${transcript}`
+                            : transcript,
+                        );
+                        input.current?.focus();
+                      }}
+                      onError={setError}
+                    />
                     {busy ? (
                       <button
                         type="button"
@@ -893,7 +906,7 @@ export default function ChatApp() {
               <div className="composer-caption">
                 <span>Curiosity welcome. Sources included.</span>
                 <span>
-                  Enter to send <kbd>↵</kbd>
+                  Mic to dictate · Enter to send <kbd>↵</kbd>
                 </span>
               </div>
             </div>
