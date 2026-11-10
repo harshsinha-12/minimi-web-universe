@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+
+# Secrets; keep the required configuration template in Git
+.env*
+!.env.example
+
+# Next.js and build output
+.next/
+out/
+dist/
+build/
+.turbo/
+*.tsbuildinfo
+next-env.d.ts
+
+# Local application data and SQLite files
+.data/
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+
+# Local Redis persistence
+/dump.rdb
+/appendonly.aof*
+/appendonlydir/
+
+# Tests and generated reports
+coverage/
+test-results/
+playwright-report/
+playwright/.cache/
+
+# Logs and operating-system files
+*.log
+.DS_Store
+Thumbs.db
