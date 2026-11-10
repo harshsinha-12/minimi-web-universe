@@ -1,0 +1,91 @@
+import { Parser } from "htmlparser2";
+import { createHash } from "node:crypto";
+import type { Message } from "../types";
+import { fetchPreviewResource, previewURL } from "./preview-fetch";
+
+export type LinkPreview = {
+  url: string;
+  title: string;
+  description: string;
+  domain: string;
+  image: string | null;
+};
+export function extractPreview(html: string, page: string): LinkPreview {
+  const meta = new Map<string, string>();
+  let title = "",
+    inTitle = false;
+  const parser = new Parser(
+    {
+      onopentag(name, attrs) {
+        if (name === "meta") {
+          const key = (attrs.property || attrs.name || "").toLowerCase();
+          if (attrs.content && !meta.has(key)) meta.set(key, attrs.content);
+        }
+        if (name === "title") inTitle = true;
+      },
+      ontext(value) {
+        if (inTitle) title += value;
+      },
+      onclosetag(name) {
+        if (name === "title") inTitle = false;
+      },
+    },
+    { decodeEntities: true },
+  );
+  parser.end(html);
+  let image: string | null = null;
+  try {
+    const raw =
+      meta.get("og:image:secure_url") ||
+      meta.get("og:image") ||
+      meta.get("twitter:image");
+    if (raw) image = previewURL(raw, page).href;
+  } catch {
+    /* Text fallback for invalid images. */
+  }
+  return {
+    url: page,
+    domain: new URL(page).hostname.replace(/^www\./, ""),
+    title: (
+      meta.get("og:title") ||
+      meta.get("twitter:title") ||
+      title ||
+      new URL(page).hostname
+    ).slice(0, 220),
+    description: (
+      meta.get("og:description") ||
+      meta.get("description") ||
+      ""
+    ).slice(0, 320),
+    image,
+  };
+}
+export function previewSources(message: Message) {
+  return [
+    ...new Map(
+      [...message.citations, ...message.sources].map((source) => [
+        source.url,
+        source,
+      ]),
+    ).values(),
+  ].slice(0, 3);
+}
+// Bounded, public-metadata cache. It contains no private conversation text or cookies.
+const previews = new Map<
+  string,
+  { expires: number; promise: Promise<LinkPreview> }
+>();
+export function linkPreview(raw: string) {
+  const url = previewURL(raw).href;
+  const key = createHash("sha256").update(url).digest("hex");
+  const old = previews.get(key);
+  if (old && old.expires > Date.now()) return old.promise;
+  const promise = fetchPreviewResource(
+    url,
+    "html",
+    AbortSignal.timeout(4000),
+  ).then((result) => extractPreview(result.body.toString("utf8"), result.url));
+  if (previews.size >= 128) previews.delete(previews.keys().next().value!);
+  previews.set(key, { expires: Date.now() + 300000, promise });
+  return promise;
+}
