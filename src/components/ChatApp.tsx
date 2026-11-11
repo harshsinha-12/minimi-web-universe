@@ -35,7 +35,7 @@ import type { Conversation, Memory, Message, Trace } from "../types";
 import { annotateMarkdown } from "../ai/evidence";
 import { consumeEvents } from "../stream/sse";
 import { Cat } from "./Cat";
-import { SourcePreviews } from "./SourcePreviews";
+import { SourcePills } from "./SourcePills";
 import { VoiceInput } from "./VoiceInput";
 
 type Bootstrap = {
@@ -684,6 +684,15 @@ export default function ChatApp() {
                         </div>
                       )}
                       <div className="message-body">
+                        {m.role === "assistant" &&
+                          m.status !== "running" &&
+                          (m.sources.length > 0 || m.citations.length > 0) && (
+                            <SourcePills
+                              messageId={m.id}
+                              sources={m.sources}
+                              citations={m.citations}
+                            />
+                          )}
                         {m.content ? (
                           <ReactMarkdown
                             remarkPlugins={[remarkGfm]}
@@ -716,14 +725,6 @@ export default function ChatApp() {
                       {m.role === "assistant" && m.status !== "running" && (
                         <>
                           <div className="message-actions">
-                            {m.sources.length > 0 && (
-                              <button
-                                className="sources-button"
-                                onClick={() => void showDetails(m)}
-                              >
-                                <Globe2 size={13} /> {m.sources.length} sources
-                              </button>
-                            )}
                             <button
                               className="icon-btn"
                               aria-label="Copy answer"
@@ -774,23 +775,6 @@ export default function ChatApp() {
                                     : ""}
                                 </p>
                               )}
-                              <SourcePreviews messageId={m.id} />
-                              <div className="source-list">
-                                {m.sources.map((s) => (
-                                  <a
-                                    key={s.url}
-                                    href={s.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                  >
-                                    <Globe2 size={13} />
-                                    <span>
-                                      {s.title || new URL(s.url).hostname}
-                                    </span>
-                                    <ArrowUpRight size={13} />
-                                  </a>
-                                ))}
-                              </div>
                             </div>
                           )}
                         </>

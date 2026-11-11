@@ -504,11 +504,10 @@ describe("native citation normalization", () => {
     expect(n.actions).toHaveLength(1);
     expect(n.sources).toHaveLength(1);
   });
-  it("renders an actual clickable source URL", () => {
+  it("removes the citation marker from the visible answer", () => {
     const n = normalizeResponse(response);
-    expect(annotateMarkdown(n.text, n.citations)).toContain(
-      "](＜".replace("＜", "<") + "https://example.com/pricing>",
-    );
+    expect(annotateMarkdown(n.text, n.citations)).toBe("Price");
+    expect(n.citations[0].url).toBe("https://example.com/pricing");
   });
   it("does not turn an incomplete provider response into completion", () =>
     expect(

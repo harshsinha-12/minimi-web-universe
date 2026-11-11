@@ -81,6 +81,7 @@ describe("saved source reuse", () => {
       description: "",
       domain: "example.com",
       image: null,
+      icon: null,
       excerpt: "version A",
       textHash: "hash-a",
       sentiment: {

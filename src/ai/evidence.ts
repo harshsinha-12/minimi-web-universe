@@ -54,17 +54,22 @@ export function normalizeResponse(response: Response) {
   };
 }
 export function annotateMarkdown(text: string, citations: Citation[]) {
-  const sorted = [...citations].sort((a, b) => b.start - a.start);
+  const sorted = [...citations]
+    .filter(
+      (citation) =>
+        citation.start >= 0 &&
+        citation.end > citation.start &&
+        citation.end <= text.length,
+    )
+    .sort((a, b) => b.start - a.start);
   let result = text;
-  for (const c of sorted) {
-    const original = text.slice(c.start, c.end);
-    const label = /^\s*(?:|\[|【)/u.test(original)
-      ? `↗ ${new URL(c.url).hostname.replace(/^www\./, "")}`
-      : original;
-    result =
-      result.slice(0, c.start) +
-      `[${label.replace(/[\[\]]/g, "")}](<${c.url}>)` +
-      result.slice(c.end);
-  }
-  return result;
+  for (const citation of sorted)
+    result = result.slice(0, citation.start) + result.slice(citation.end);
+  return result
+    .replace(/\(\s*\)/g, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]+$/gm, "")
+    .trim();
 }
