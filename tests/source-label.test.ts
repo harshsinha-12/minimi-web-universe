@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { annotateMarkdown } from "../src/ai/evidence";
 import { pillSources, sourceList, sourceName } from "../src/ai/source-label";
+import { detailsForMessage } from "../src/components/SourcePills";
 import { extractPreview } from "../src/server/link-previews";
 import type { Citation } from "../src/types";
 
@@ -40,6 +41,14 @@ describe("source pills", () => {
       "https://www.projectminimi.com/",
       "https://example.com/extra",
     ]);
+  });
+  it("does not reuse another answer's source labels", () => {
+    const loaded = {
+      messageId: "first",
+      details: { 0: { name: "ICC", title: "Fixtures", description: "" } },
+    };
+    expect(detailsForMessage(loaded, "second")).toEqual({});
+    expect(detailsForMessage(loaded, "first")[0]?.name).toBe("ICC");
   });
   it("caps the source sheet at twelve unique pages", () => {
     const sources = Array.from({ length: 14 }, (_, index) => ({

@@ -6,6 +6,13 @@ import { sourceList, sourceName } from "../ai/source-label";
 
 type Detail = { title: string; description: string; name: string };
 
+export function detailsForMessage(
+  loaded: { messageId: string; details: Record<number, Detail> } | null,
+  messageId: string,
+) {
+  return loaded?.messageId === messageId ? loaded.details : {};
+}
+
 export function SourcePills({
   messageId,
   sources,
@@ -60,17 +67,23 @@ export function SourcesSidebar({
   onClose: () => void;
 }) {
   const items = sourceList(sources, citations);
-  const [details, setDetails] = useState<Record<number, Detail>>({});
+  const [loaded, setLoaded] = useState<{
+    messageId: string;
+    details: Record<number, Detail>;
+  } | null>(null);
+  const details = detailsForMessage(loaded, messageId);
   useEffect(() => {
     const abort = new AbortController();
-    void fetch(`/api/messages/${messageId}/source-pills`, {
+    const requestedId = messageId;
+    void fetch(`/api/messages/${requestedId}/source-pills`, {
       signal: abort.signal,
     })
       .then((response) => (response.ok ? response.json() : { pills: [] }))
       .then((data: { pills?: Array<Detail & { index: number }> }) => {
+        if (abort.signal.aborted) return;
         const next: Record<number, Detail> = {};
         for (const pill of data.pills ?? []) next[pill.index] = pill;
-        setDetails(next);
+        setLoaded({ messageId: requestedId, details: next });
       })
       .catch(() => {});
     return () => abort.abort();

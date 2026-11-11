@@ -1,5 +1,6 @@
 "use client";
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -32,6 +33,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Conversation, Memory, Message, Trace } from "../types";
 import { annotateMarkdown } from "../ai/evidence";
+import { isNewConversationShortcut } from "./shortcuts";
 import { consumeEvents } from "../stream/sse";
 import { Cat } from "./Cat";
 import { formatAnswer } from "./chat-export";
@@ -150,28 +152,32 @@ export default function ChatApp() {
     const timer = setInterval(() => void refresh().catch(() => {}), 10000);
     return () => clearInterval(timer);
   }, [panel]);
-  useEffect(() => {
-    const listener = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-        e.preventDefault();
-        input.current?.focus();
-      }
-      if (e.key === "Escape") setPanel(null);
-    };
-    window.addEventListener("keydown", listener);
-    return () => window.removeEventListener("keydown", listener);
-  }, []);
-  function newThread() {
+  const newThread = useCallback(() => {
     if (busy) return;
     setThread(null);
     setMessages([]);
     setPanel(null);
+    setSourceMessageId(null);
     setText("");
     setError(null);
     window.history.replaceState(null, "", "/");
     input.current?.focus();
     if (window.innerWidth < 800) setSidebar(false);
-  }
+  }, [busy]);
+  useEffect(() => {
+    const listener = (e: KeyboardEvent) => {
+      if (isNewConversationShortcut(e)) {
+        e.preventDefault();
+        newThread();
+      }
+      if (e.key === "Escape") {
+        setPanel(null);
+        setSourceMessageId(null);
+      }
+    };
+    window.addEventListener("keydown", listener);
+    return () => window.removeEventListener("keydown", listener);
+  }, [newThread]);
   async function send(event?: FormEvent) {
     event?.preventDefault();
     if (!text.trim() || busy || !boot) return;
@@ -925,6 +931,7 @@ export default function ChatApp() {
             onClick={() => setSourceMessageId(null)}
           />
           <SourcesSidebar
+            key={sourceMessage.id}
             messageId={sourceMessage.id}
             sources={sourceMessage.sources}
             citations={sourceMessage.citations}
