@@ -1,15 +1,22 @@
 "use client";
 import { useState } from "react";
 import { Check, Copy, Download, Share2 } from "lucide-react";
-import { chatFileName, formatChat } from "./chat-export";
+import { chatFileName, formatAnswer, formatChat } from "./chat-export";
+
+type ChatMessage = {
+  role: string;
+  content: string;
+  citations?: { url: string; title: string }[];
+  sources?: { url: string; title: string }[];
+};
 
 export function ChatActions({
   answer,
   messages,
   title,
 }: {
-  answer: string;
-  messages: { role: string; content: string }[];
+  answer: ChatMessage;
+  messages: ChatMessage[];
   title: string;
 }) {
   const [notice, setNotice] = useState("");
@@ -56,7 +63,7 @@ export function ChatActions({
         type="button"
         className="icon-btn"
         aria-label="Copy answer"
-        onClick={() => void copy(answer, "Copied answer")}
+        onClick={() => void copy(formatAnswer(answer), "Copied answer")}
       >
         <Copy size={14} />
       </button>
