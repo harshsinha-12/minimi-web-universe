@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { X } from "lucide-react";
 import type { Citation, Source } from "../types";
 import { sourceList, sourceName } from "../ai/source-label";
 
@@ -9,29 +10,16 @@ export function SourcePills({
   messageId,
   sources,
   citations,
+  open,
+  onToggle,
 }: {
   messageId: string;
   sources: Source[];
   citations: Citation[];
+  open: boolean;
+  onToggle: () => void;
 }) {
   const items = sourceList(sources, citations);
-  const [open, setOpen] = useState(false);
-  const [details, setDetails] = useState<Record<number, Detail>>({});
-  useEffect(() => {
-    if (!open) return;
-    const abort = new AbortController();
-    void fetch(`/api/messages/${messageId}/source-pills`, {
-      signal: abort.signal,
-    })
-      .then((response) => (response.ok ? response.json() : { pills: [] }))
-      .then((data: { pills?: Array<Detail & { index: number }> }) => {
-        const next: Record<number, Detail> = {};
-        for (const pill of data.pills ?? []) next[pill.index] = pill;
-        setDetails(next);
-      })
-      .catch(() => {});
-    return () => abort.abort();
-  }, [messageId, open]);
   if (!items.length) return null;
   const extra = Math.max(0, items.length - 3);
   return (
@@ -40,7 +28,7 @@ export function SourcePills({
         type="button"
         className="source-cluster-button"
         aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
+        onClick={onToggle}
       >
         <span className="source-stack" aria-hidden="true">
           {items.slice(0, 3).map((item, index) => (
@@ -56,39 +44,81 @@ export function SourcePills({
           {items.length} {items.length === 1 ? "Source" : "Sources"}
         </span>
       </button>
-      {open && (
-        <div className="source-sheet" role="region" aria-label="Sources">
-          {items.map((item, index) => {
-            const detail = details[index];
-            const name = detail?.name || sourceName(item.url, item.title);
-            const title = detail?.title || item.title || name;
-            const description =
-              detail?.description && detail.description !== title
-                ? detail.description
-                : "";
-            const line = title !== name ? title : description;
-            return (
-              <a
-                className="source-card"
-                key={item.url}
-                href={item.url}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <PillLogo
-                  src={`/api/messages/${messageId}/source-icon?source=${index}`}
-                  name={name}
-                />
-                <span className="source-card-copy">
-                  <strong>{name}</strong>
-                  {line && <em>{line}</em>}
-                </span>
-              </a>
-            );
-          })}
-        </div>
-      )}
     </div>
+  );
+}
+
+export function SourcesSidebar({
+  messageId,
+  sources,
+  citations,
+  onClose,
+}: {
+  messageId: string;
+  sources: Source[];
+  citations: Citation[];
+  onClose: () => void;
+}) {
+  const items = sourceList(sources, citations);
+  const [details, setDetails] = useState<Record<number, Detail>>({});
+  useEffect(() => {
+    const abort = new AbortController();
+    void fetch(`/api/messages/${messageId}/source-pills`, {
+      signal: abort.signal,
+    })
+      .then((response) => (response.ok ? response.json() : { pills: [] }))
+      .then((data: { pills?: Array<Detail & { index: number }> }) => {
+        const next: Record<number, Detail> = {};
+        for (const pill of data.pills ?? []) next[pill.index] = pill;
+        setDetails(next);
+      })
+      .catch(() => {});
+    return () => abort.abort();
+  }, [messageId]);
+  return (
+    <aside className="sources-sidebar" aria-label="Sources">
+      <header>
+        <strong>Sources{items.length ? ` (${items.length})` : ""}</strong>
+        <button
+          type="button"
+          className="icon-btn"
+          aria-label="Close sources"
+          onClick={onClose}
+        >
+          <X size={16} />
+        </button>
+      </header>
+      <div className="sources-sidebar-list">
+        {items.map((item, index) => {
+          const detail = details[index];
+          const name = detail?.name || sourceName(item.url, item.title);
+          const title = detail?.title || item.title || name;
+          const description =
+            detail?.description && detail.description !== title
+              ? detail.description
+              : "";
+          const line = title !== name ? title : description;
+          return (
+            <a
+              className="source-card"
+              key={item.url}
+              href={item.url}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <PillLogo
+                src={`/api/messages/${messageId}/source-icon?source=${index}`}
+                name={name}
+              />
+              <span className="source-card-copy">
+                <strong>{name}</strong>
+                {line && <em>{line}</em>}
+              </span>
+            </a>
+          );
+        })}
+      </div>
+    </aside>
   );
 }
 

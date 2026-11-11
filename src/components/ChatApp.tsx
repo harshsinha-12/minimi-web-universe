@@ -36,7 +36,7 @@ import { consumeEvents } from "../stream/sse";
 import { Cat } from "./Cat";
 import { formatAnswer } from "./chat-export";
 import { ChatActions } from "./ChatActions";
-import { SourcePills } from "./SourcePills";
+import { SourcePills, SourcesSidebar } from "./SourcePills";
 import { ThoughtTrace } from "./ThoughtTrace";
 import { VoiceInput } from "./VoiceInput";
 
@@ -97,6 +97,7 @@ export default function ChatApp() {
   const [sidebarChoice, setSidebar] = useState<boolean | null>(null);
   const sidebar = sidebarChoice ?? !narrow;
   const [panel, setPanel] = useState<"memory" | "about" | null>(null);
+  const [sourceMessageId, setSourceMessageId] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
   const [showSearch, setShowSearch] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -342,9 +343,13 @@ export default function ChatApp() {
   }
   const count = boot?.conversations.length ?? 0;
   const currentTitle = boot?.conversations.find((c) => c.id === thread)?.title;
+  const sourceMessage =
+    messages.find((item) => item.id === sourceMessageId) ?? null;
 
   return (
-    <div className={`app-shell ${sidebar ? "" : "sidebar-hidden"}`}>
+    <div
+      className={`app-shell ${sidebar ? "" : "sidebar-hidden"} ${sourceMessage ? "sources-open" : ""}`}
+    >
       {sidebar && (
         <button
           className="sidebar-scrim"
@@ -737,6 +742,12 @@ export default function ChatApp() {
                                 messageId={m.id}
                                 sources={m.sources}
                                 citations={m.citations}
+                                open={sourceMessageId === m.id}
+                                onToggle={() =>
+                                  setSourceMessageId((current) =>
+                                    current === m.id ? null : m.id,
+                                  )
+                                }
                               />
                             )}
                             {m.id ===
@@ -748,7 +759,6 @@ export default function ChatApp() {
                                   item.status !== "running",
                               )?.id ? (
                               <ChatActions
-                                answer={m}
                                 messages={messages}
                                 title={currentTitle || "minimi chat"}
                               />
@@ -907,6 +917,21 @@ export default function ChatApp() {
           </button>
         </footer>
       </main>
+      {sourceMessage && (
+        <>
+          <button
+            className="sources-scrim"
+            aria-label="Close sources"
+            onClick={() => setSourceMessageId(null)}
+          />
+          <SourcesSidebar
+            messageId={sourceMessage.id}
+            sources={sourceMessage.sources}
+            citations={sourceMessage.citations}
+            onClose={() => setSourceMessageId(null)}
+          />
+        </>
+      )}
     </div>
   );
 }
