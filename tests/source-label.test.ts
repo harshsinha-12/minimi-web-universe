@@ -13,6 +13,8 @@ describe("source pills", () => {
     expect(sourceName("https://rizevault.razorpay.com/story")).toBe("Razorpay");
     expect(sourceName("https://www.reddit.com/r/typescript")).toBe("Reddit");
     expect(sourceName("https://www.projectminimi.com/")).toBe("minimi");
+    expect(sourceName("https://www.icc-cricket.com/fixtures")).toBe("ICC");
+    expect(sourceName("https://www.espncricinfo.com/")).toBe("ESPNcricinfo");
   });
   it("keeps cited pages first and does not repeat a URL", () => {
     const sources = [

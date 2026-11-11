@@ -34,6 +34,8 @@ import type { Conversation, Memory, Message, Trace } from "../types";
 import { annotateMarkdown } from "../ai/evidence";
 import { consumeEvents } from "../stream/sse";
 import { Cat } from "./Cat";
+import { formatAnswer } from "./chat-export";
+import { ChatActions } from "./ChatActions";
 import { SourcePills } from "./SourcePills";
 import { ThoughtTrace } from "./ThoughtTrace";
 import { VoiceInput } from "./VoiceInput";
@@ -737,21 +739,39 @@ export default function ChatApp() {
                                 citations={m.citations}
                               />
                             )}
-                            <button
-                              className="icon-btn"
-                              aria-label="Copy answer"
-                              onClick={() => {
-                                void navigator.clipboard.writeText(m.content);
-                                setCopied(m.id);
-                                setTimeout(() => setCopied(null), 1600);
-                              }}
-                            >
-                              {copied === m.id ? (
-                                <Check size={14} />
-                              ) : (
-                                <Copy size={14} />
-                              )}
-                            </button>
+                            {m.id ===
+                            [...messages]
+                              .reverse()
+                              .find(
+                                (item) =>
+                                  item.role === "assistant" &&
+                                  item.status !== "running",
+                              )?.id ? (
+                              <ChatActions
+                                answer={m}
+                                messages={messages}
+                                title={currentTitle || "minimi chat"}
+                              />
+                            ) : (
+                              <button
+                                type="button"
+                                className="icon-btn"
+                                aria-label="Copy answer"
+                                onClick={() => {
+                                  void navigator.clipboard.writeText(
+                                    formatAnswer(m),
+                                  );
+                                  setCopied(m.id);
+                                  setTimeout(() => setCopied(null), 1600);
+                                }}
+                              >
+                                {copied === m.id ? (
+                                  <Check size={14} />
+                                ) : (
+                                  <Copy size={14} />
+                                )}
+                              </button>
+                            )}
                             {m.status !== "completed" && (
                               <span className="interrupted-label">
                                 {m.status}

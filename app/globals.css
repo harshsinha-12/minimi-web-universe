@@ -913,6 +913,21 @@ kbd {
 .message-body a {
   color: #806591;
 }
+.chat-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.chat-actions .icon-btn span {
+  font-size: 11px;
+}
+.chat-action-notice {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #5d5670;
+  font-size: 11px;
+}
 .message-actions {
   display: flex;
   flex-wrap: wrap;
