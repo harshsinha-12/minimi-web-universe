@@ -1,6 +1,6 @@
 import { ownerSession } from "@/server/session";
 import { getStore } from "@/db/store";
-import { oneLine, pillSources, sourceName } from "@/ai/source-label";
+import { oneLine, sourceList, sourceName } from "@/ai/source-label";
 import { linkPreview } from "@/server/link-previews";
 import { logger } from "@/server/logger";
 
@@ -15,7 +15,7 @@ export async function GET(
   const message = getStore().message(owner, id);
   if (!message)
     return Response.json({ error: "Message not found" }, { status: 404 });
-  const sources = pillSources(message.sources, message.citations);
+  const sources = sourceList(message.sources, message.citations);
   const results = await Promise.allSettled(
     sources.map(async (source, index) => {
       const name = sourceName(source.url, source.title);

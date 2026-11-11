@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { annotateMarkdown } from "../src/ai/evidence";
-import { pillSources, sourceName } from "../src/ai/source-label";
+import { pillSources, sourceList, sourceName } from "../src/ai/source-label";
 import { extractPreview } from "../src/server/link-previews";
 import type { Citation } from "../src/types";
 
@@ -38,6 +38,13 @@ describe("source pills", () => {
       "https://www.projectminimi.com/",
       "https://example.com/extra",
     ]);
+  });
+  it("caps the source sheet at twelve unique pages", () => {
+    const sources = Array.from({ length: 14 }, (_, index) => ({
+      url: `https://example.com/${index}`,
+      title: `Page ${index}`,
+    }));
+    expect(sourceList(sources)).toHaveLength(12);
   });
   it("does not rewrite code when nothing is cited", () => {
     const text =
