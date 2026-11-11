@@ -780,6 +780,7 @@ export default function ChatApp() {
                                   <a
                                     key={s.url}
                                     href={s.url}
+                                    title={`${s.title || new URL(s.url).hostname}\n${s.url}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                   >

@@ -796,6 +796,8 @@ kbd {
   color: #9a7155;
 }
 .research-details {
+  min-width: 0;
+  max-width: 100%;
   background: #f0ede6;
   border: 1px solid #e6dfd3;
   border-radius: 9px;
@@ -819,6 +821,8 @@ kbd {
 }
 .source-list {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
   gap: 7px;
   margin-top: 10px;
 }
@@ -826,13 +830,20 @@ kbd {
   display: flex;
   align-items: center;
   gap: 7px;
+  min-width: 0;
+  max-width: 100%;
   color: #8b719a;
   text-decoration: none;
 }
 .source-list a > span {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.source-list a > svg {
+  flex-shrink: 0;
 }
 .source-list a > svg:last-child {
   margin-left: auto;
