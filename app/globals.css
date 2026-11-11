@@ -504,6 +504,28 @@ nav {
   background: #e8d5cb;
   color: #785c4a;
 }
+.mic-button {
+  height: 33px;
+  width: 33px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #e5e2d9;
+  border-radius: 8px;
+  color: #6d6574;
+  background: transparent;
+}
+.mic-button:hover:not(:disabled) {
+  background: #f6f1ea;
+  color: #5d486e;
+}
+.mic-button.recording {
+  background: #f3e4dc;
+  color: #8a4b3a;
+  border-color: #e2cabb;
+}
+.mic-button:disabled {
+  opacity: 0.55;
+}
 .suggestions {
   display: flex;
   gap: 9px;

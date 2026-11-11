@@ -333,6 +333,7 @@ Implementation differences from the initial defaults: the answer model is now `g
 3. **Offline evaluation:** keyless deterministic tests; `eval:judge` grades known good/bad synthetic answers; `eval:agent` exercises the real production orchestrator on isolated historical fixtures, then judges the output. Strict output validation leaves malformed verdicts unscored. Critical evidence failures cannot be averaged away by writing quality.
 4. **Recall fix found by evals:** retrieval now runs for ordinary questions too, so a region preference can be recalled without the words “remember” or “earlier”. The evaluator now receives the real message IDs to validate historical deep links.
 5. **Source preview implementation:** owned-message endpoints fetch at most three persisted source URLs; parse Open Graph/Twitter/title metadata; proxy raster images. HTTPS restrictions, connection-time public DNS checks, redirect/size/time limits and text fallbacks are implemented. A live Wispr Flow metadata/image smoke check passed; endpoint access tests and visual/browser QA remain next steps.
+6. **Composer dictation:** the microphone records a short clip and `POST /api/transcribe` sends it to OpenAI speech-to-text. The transcript is inserted for editing. Audio is not stored, the route is owner-scoped and size-limited, and the answer model is not given a transcription tool.
 
 ### Next work, in order
 

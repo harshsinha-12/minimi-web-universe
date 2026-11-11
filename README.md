@@ -22,6 +22,7 @@ Default answer model: `gpt-6-astra`. Memory synthesis and conditional coverage r
 - Cross-thread retrieval using dates, FTS5, recent context, source-linked memories, and optional Pinecone semantic recall. Relative dates use the request's local timezone.
 - Live OpenAI web search is the only agent-facing tool. Internal retrieval and memory synthesis are application functions.
 - Rechecks can make up to two targeted follow-up passes after a conditional coverage review. Candidate rechecks are held until publication so provisional drafts do not appear as final answers.
+- The composer microphone transcribes speech with OpenAI (`TRANSCRIBE_MODEL`, default `gpt-4o-mini-transcribe`) and inserts editable text. Audio is not stored, and this call is not a chat tool.
 - Background memory consolidation with exact user-message support, versioned snapshots, applicability expiry, durable outbox, fenced leases, revision checks, bounded retries, and source exclusions for forgotten memory.
 - Inspect memories, open their source conversations, request a refresh, or forget derived context. Correct a preference by saying so in chat; raw recent corrections accompany older memory while consolidation catches up.
 
