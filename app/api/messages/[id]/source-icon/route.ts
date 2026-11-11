@@ -1,6 +1,6 @@
 import { ownerSession } from "@/server/session";
 import { getStore } from "@/db/store";
-import { pillSources } from "@/ai/source-label";
+import { sourceList } from "@/ai/source-label";
 import { linkPreview } from "@/server/link-previews";
 import { fetchPreviewResource, previewURL } from "@/server/preview-fetch";
 
@@ -16,7 +16,7 @@ export async function GET(
   const raw = new URL(request.url).searchParams.get("source");
   const index = raw && /^\d+$/.test(raw) ? Number(raw) : -1;
   const source =
-    message && pillSources(message.sources, message.citations)[index];
+    message && sourceList(message.sources, message.citations)[index];
   if (!source) return new Response(null, { status: 404 });
   let page = source.url;
   try {

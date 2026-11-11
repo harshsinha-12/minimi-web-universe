@@ -697,15 +697,6 @@ export default function ChatApp() {
                         />
                       )}
                       <div className="message-body">
-                        {m.role === "assistant" &&
-                          m.status !== "running" &&
-                          (m.sources.length > 0 || m.citations.length > 0) && (
-                            <SourcePills
-                              messageId={m.id}
-                              sources={m.sources}
-                              citations={m.citations}
-                            />
-                          )}
                         {m.content ? (
                           <ReactMarkdown
                             remarkPlugins={[remarkGfm]}
@@ -738,6 +729,14 @@ export default function ChatApp() {
                       {m.role === "assistant" && m.status !== "running" && (
                         <>
                           <div className="message-actions">
+                            {(m.sources.length > 0 ||
+                              m.citations.length > 0) && (
+                              <SourcePills
+                                messageId={m.id}
+                                sources={m.sources}
+                                citations={m.citations}
+                              />
+                            )}
                             <button
                               className="icon-btn"
                               aria-label="Copy answer"

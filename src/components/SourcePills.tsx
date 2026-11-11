@@ -1,9 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
 import type { Citation, Source } from "../types";
-import { pillSources, sourceName } from "../ai/source-label";
+import { sourceList, sourceName } from "../ai/source-label";
 
-type Detail = { title: string; description: string };
+type Detail = { title: string; description: string; name: string };
 
 export function SourcePills({
   messageId,
@@ -14,9 +14,11 @@ export function SourcePills({
   sources: Source[];
   citations: Citation[];
 }) {
-  const items = pillSources(sources, citations);
+  const items = sourceList(sources, citations);
+  const [open, setOpen] = useState(false);
   const [details, setDetails] = useState<Record<number, Detail>>({});
   useEffect(() => {
+    if (!open) return;
     const abort = new AbortController();
     void fetch(`/api/messages/${messageId}/source-pills`, {
       signal: abort.signal,
@@ -24,42 +26,68 @@ export function SourcePills({
       .then((response) => (response.ok ? response.json() : { pills: [] }))
       .then((data: { pills?: Array<Detail & { index: number }> }) => {
         const next: Record<number, Detail> = {};
-        for (const pill of data.pills ?? [])
-          next[pill.index] = {
-            title: pill.title,
-            description: pill.description,
-          };
+        for (const pill of data.pills ?? []) next[pill.index] = pill;
         setDetails(next);
       })
       .catch(() => {});
     return () => abort.abort();
-  }, [messageId]);
+  }, [messageId, open]);
   if (!items.length) return null;
+  const extra = Math.max(0, items.length - 3);
   return (
-    <div className="source-pills" aria-label="Sources">
-      {items.map((item, index) => {
-        const detail = details[index];
-        const title = detail?.title || sourceName(item.url, item.title);
-        const description = detail?.description || "";
-        return (
-          <a
-            className="source-pill"
-            key={item.url}
-            href={item.url}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
+    <div className="source-cluster">
+      <button
+        type="button"
+        className="source-cluster-button"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <span className="source-stack" aria-hidden="true">
+          {items.slice(0, 3).map((item, index) => (
             <PillLogo
+              key={item.url}
               src={`/api/messages/${messageId}/source-icon?source=${index}`}
               name={sourceName(item.url, item.title)}
             />
-            <span className="source-pill-copy">
-              <strong>{title}</strong>
-              {description && <em>{description}</em>}
-            </span>
-          </a>
-        );
-      })}
+          ))}
+        </span>
+        {extra > 0 && <span className="source-extra">+{extra}</span>}
+        <span>
+          {items.length} {items.length === 1 ? "Source" : "Sources"}
+        </span>
+      </button>
+      {open && (
+        <div className="source-sheet" role="region" aria-label="Sources">
+          {items.map((item, index) => {
+            const detail = details[index];
+            const name = detail?.name || sourceName(item.url, item.title);
+            const title = detail?.title || item.title || name;
+            const description =
+              detail?.description && detail.description !== title
+                ? detail.description
+                : "";
+            const line = title !== name ? title : description;
+            return (
+              <a
+                className="source-card"
+                key={item.url}
+                href={item.url}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <PillLogo
+                  src={`/api/messages/${messageId}/source-icon?source=${index}`}
+                  name={name}
+                />
+                <span className="source-card-copy">
+                  <strong>{name}</strong>
+                  {line && <em>{line}</em>}
+                </span>
+              </a>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

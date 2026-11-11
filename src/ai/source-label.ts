@@ -53,7 +53,11 @@ function canonical(url: string) {
   return parsed.href.replace(/\/$/, "");
 }
 
-export function pillSources(sources: Source[], citations: Citation[] = []) {
+export function sourceList(
+  sources: Source[],
+  citations: Citation[] = [],
+  limit = 12,
+) {
   const seen = new Set<string>();
   const items: Source[] = [];
   const add = (url: string, title: string) => {
@@ -69,5 +73,8 @@ export function pillSources(sources: Source[], citations: Citation[] = []) {
   };
   for (const citation of citations) add(citation.url, citation.title);
   for (const source of sources) add(source.url, source.title);
-  return items.slice(0, 6);
+  return items.slice(0, limit);
+}
+export function pillSources(sources: Source[], citations: Citation[] = []) {
+  return sourceList(sources, citations, 6);
 }
