@@ -1,6 +1,6 @@
 import { SYSTEM } from "../__prompts__/prompt__answer";
 import { webSearchTools } from "../__tools__/tool__web_search";
-import { turnSearchMode } from "../search-cache";
+import { isContextDependent, turnSearchMode } from "../search-cache";
 import { prepareSearchRefresh, rememberSearch } from "../search-refresh";
 import { reviewResearch } from "./agent__research_review";
 import OpenAI from "openai";
@@ -78,6 +78,7 @@ export async function runAgent(args: {
       ? await prepareSearchRefresh({
           store,
           owner,
+          conversationId,
           question,
           forceSearch,
           recheck,
@@ -259,9 +260,16 @@ export async function runAgent(args: {
       ...(prepared.detail ? { searchCache: prepared.detail } : {}),
     };
     if (policy.allow && result.sources.length)
-      void rememberSearch(store, owner, question, result.sources, {
-        touchLookup: !reuse,
-      }).catch((error) =>
+      void rememberSearch(
+        store,
+        owner,
+        conversationId,
+        question,
+        result.sources,
+        {
+          touchLookup: !reuse && !isContextDependent(question),
+        },
+      ).catch((error) =>
         logger.warn(
           { component: "search-cache", err: error },
           "could not save source pages",

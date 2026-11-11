@@ -21,8 +21,34 @@ export function normalizeQuestion(question: string) {
     .trim()
     .slice(0, 500);
 }
-export function questionKey(question: string) {
-  return createHash("sha256").update(normalizeQuestion(question)).digest("hex");
+export function questionUrls(question: string) {
+  const found = question.match(/https?:\/\/[^\s<>"']+/gi) ?? [];
+  return [
+    ...new Set(
+      found.map((raw) => {
+        const trimmed = raw.replace(/[),.;:!?]+$/g, "");
+        try {
+          const url = new URL(trimmed);
+          url.hash = "";
+          return url.href;
+        } catch {
+          return trimmed;
+        }
+      }),
+    ),
+  ].sort();
+}
+export function questionKey(question: string, conversationId: string) {
+  return createHash("sha256")
+    .update(
+      `${conversationId}\n${normalizeQuestion(question)}\n${questionUrls(question).join("\n")}`,
+    )
+    .digest("hex");
+}
+export function isContextDependent(question: string) {
+  return /\b(?:it|its|it's|this|that|these|those|they|them|their|theirs|he|she|him|her|hers|former|latter)\b/i.test(
+    question,
+  );
 }
 export function isVolatileQuestion(question: string) {
   return /\b(today|latest|current|pricing|prices|price|cost|news|release|weather|stocks|stock|score|outage|who is|who are)\b/i.test(

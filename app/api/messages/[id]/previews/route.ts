@@ -1,6 +1,10 @@
 import { ownerSession } from "@/server/session";
 import { getStore } from "@/db/store";
-import { linkPreview, previewSources } from "@/server/link-previews";
+import {
+  linkPreview,
+  previewSources,
+  retainPreviewObservation,
+} from "@/server/link-previews";
 import { logger } from "@/server/logger";
 import { previewCard } from "@/server/source-chips";
 export const runtime = "nodejs";
@@ -19,6 +23,7 @@ export async function GET(
     previewSources(message).map(async (source, i) => {
       const preview = await linkPreview(source.url);
       const observation = store.pageObservation(preview.url);
+      const replacement = retainPreviewObservation(preview, observation);
       const card = previewCard(
         message,
         {
@@ -27,17 +32,9 @@ export async function GET(
             ? `/api/messages/${id}/preview-image?source=${i}`
             : null,
         },
-        observation,
+        replacement ? observation : null,
       );
-      store.savePageObservation({
-        url: preview.url,
-        etag: observation?.etag ?? null,
-        lastModified: observation?.lastModified ?? null,
-        textHash: preview.textHash,
-        title: preview.title,
-        excerpt: preview.excerpt,
-        fetchedAt: new Date().toISOString(),
-      });
+      if (replacement) store.savePageObservation(replacement);
       return card;
     }),
   );

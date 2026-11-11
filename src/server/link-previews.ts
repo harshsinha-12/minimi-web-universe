@@ -15,6 +15,11 @@ export type LinkPreview = {
   textHash: string;
   sentiment: { label: SentimentLabel; reason: string };
 };
+export type FetchedPreview = LinkPreview & {
+  etag: string | null;
+  lastModified: string | null;
+  fetchedAt: string;
+};
 export function extractPreview(html: string, page: string): LinkPreview {
   const meta = new Map<string, string>();
   let title = "",
@@ -84,7 +89,7 @@ export function previewSources(message: Message) {
 // Bounded, public-metadata cache. It contains no private conversation text or cookies.
 const previews = new Map<
   string,
-  { expires: number; promise: Promise<LinkPreview> }
+  { expires: number; promise: Promise<FetchedPreview> }
 >();
 export function linkPreview(raw: string) {
   const url = previewURL(raw).href;
@@ -95,8 +100,30 @@ export function linkPreview(raw: string) {
     url,
     "html",
     AbortSignal.timeout(4000),
-  ).then((result) => extractPreview(result.body.toString("utf8"), result.url));
+  ).then((result) => ({
+    ...extractPreview(result.body.toString("utf8"), result.url),
+    etag: result.etag,
+    lastModified: result.lastModified,
+    fetchedAt: new Date().toISOString(),
+  }));
   if (previews.size >= 128) previews.delete(previews.keys().next().value!);
   previews.set(key, { expires: Date.now() + 300000, promise });
   return promise;
+}
+export function retainPreviewObservation(
+  preview: FetchedPreview,
+  stored: { fetchedAt: string } | null,
+) {
+  const storedAt = stored ? Date.parse(stored.fetchedAt) : Number.NaN;
+  const previewAt = Date.parse(preview.fetchedAt);
+  if (Number.isFinite(storedAt) && storedAt > previewAt) return null;
+  return {
+    url: preview.url,
+    etag: preview.etag,
+    lastModified: preview.lastModified,
+    textHash: preview.textHash,
+    title: preview.title,
+    excerpt: preview.excerpt,
+    fetchedAt: preview.fetchedAt,
+  };
 }

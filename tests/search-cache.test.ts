@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { Store } from "../src/db/store";
 import {
+  isContextDependent,
   isVolatileQuestion,
   normalizeQuestion,
   questionKey,
@@ -8,6 +9,7 @@ import {
   turnSearchMode,
   type CheckedPage,
 } from "../src/ai/search-cache";
+import { retainPreviewObservation } from "../src/server/link-previews";
 import { pageFingerprint, visibleText } from "../src/server/page-text";
 import {
   pageFreshness,
@@ -51,13 +53,54 @@ function message(patch: Partial<Message> = {}): Message {
 }
 
 describe("saved source reuse", () => {
-  it("normalizes punctuation and links without treating them as different questions", () => {
-    expect(questionKey("What's the WAL mode?")).toBe(
-      questionKey("whats the wal mode"),
+  it("keeps punctuation, conversation, and requested URLs distinct", () => {
+    expect(questionKey("What's the WAL mode?", "thread")).toBe(
+      questionKey("whats the wal mode", "thread"),
     );
     expect(normalizeQuestion("See https://example.com/a, please.")).toBe(
       "see please",
     );
+    expect(
+      questionKey("Summarize https://example.com/product-a", "thread"),
+    ).not.toBe(
+      questionKey("Summarize https://example.com/product-b", "thread"),
+    );
+    expect(
+      questionKey("Summarize https://example.com/product-a.", "thread"),
+    ).toBe(questionKey("summarize https://example.com/product-a", "thread"));
+    expect(
+      questionKey("How much does the Pro plan cost?", "thread-a"),
+    ).not.toBe(questionKey("How much does the Pro plan cost?", "thread-b"));
+    expect(isContextDependent("How much does it cost?")).toBe(true);
+    expect(isContextDependent("How does SQLite WAL mode work?")).toBe(false);
+  });
+  it("does not pair an older preview body with a newer page observation", () => {
+    const preview = {
+      url: "https://example.com/a",
+      title: "A",
+      description: "",
+      domain: "example.com",
+      image: null,
+      excerpt: "version A",
+      textHash: "hash-a",
+      sentiment: {
+        label: "neutral" as const,
+        reason: "The preview wording has no clear positive or negative tone.",
+      },
+      etag: '"page-a"',
+      lastModified: null,
+      fetchedAt: "2026-11-11T12:00:00.000Z",
+    };
+    expect(
+      retainPreviewObservation(preview, {
+        fetchedAt: "2026-11-11T11:00:00.000Z",
+      }),
+    ).toMatchObject({ textHash: "hash-a", etag: '"page-a"' });
+    expect(
+      retainPreviewObservation(preview, {
+        fetchedAt: "2026-11-11T12:30:00.000Z",
+      }),
+    ).toBeNull();
   });
   it("reuses a stable unchanged page and skips hosted search", () => {
     const decision = searchDecision({

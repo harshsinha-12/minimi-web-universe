@@ -4,7 +4,12 @@ import { logger } from "../server/logger";
 import { canonicalPageUrl } from "../server/preview-fetch";
 import { revalidatePage } from "../server/page-observe";
 import type { Source } from "../types";
-import { questionKey, searchDecision, type CheckedPage } from "./search-cache";
+import {
+  isContextDependent,
+  questionKey,
+  searchDecision,
+  type CheckedPage,
+} from "./search-cache";
 
 function sourceUrls(sources: Source[]) {
   return [
@@ -18,18 +23,24 @@ function sourceUrls(sources: Source[]) {
 export async function prepareSearchRefresh(args: {
   store: Store;
   owner: string;
+  conversationId: string;
   question: string;
   forceSearch: boolean;
   recheck: boolean;
   signal: AbortSignal;
 }) {
   const empty = { reuse: false, note: "", detail: "", sources: [] as Source[] };
-  if (!settings.searchReuse || args.forceSearch || args.signal.aborted)
+  if (
+    !settings.searchReuse ||
+    args.forceSearch ||
+    args.signal.aborted ||
+    isContextDependent(args.question)
+  )
     return empty;
   try {
     const lookup = args.store.searchLookup(
       args.owner,
-      questionKey(args.question),
+      questionKey(args.question, args.conversationId),
     );
     if (!lookup) return empty;
     const budget = AbortSignal.any([
@@ -85,6 +96,7 @@ export async function prepareSearchRefresh(args: {
 export async function rememberSearch(
   store: Store,
   owner: string,
+  conversationId: string,
   question: string,
   sources: Source[],
   options: { touchLookup: boolean },
@@ -109,7 +121,7 @@ export async function rememberSearch(
   if (options.touchLookup)
     store.saveSearchLookup(
       owner,
-      questionKey(question),
+      questionKey(question, conversationId),
       urls,
       new Date().toISOString(),
     );
