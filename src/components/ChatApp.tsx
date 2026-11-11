@@ -931,6 +931,7 @@ export default function ChatApp() {
             onClick={() => setSourceMessageId(null)}
           />
           <SourcesSidebar
+            key={sourceMessage.id}
             messageId={sourceMessage.id}
             sources={sourceMessage.sources}
             citations={sourceMessage.citations}
