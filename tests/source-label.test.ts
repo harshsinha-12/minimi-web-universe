@@ -39,6 +39,25 @@ describe("source pills", () => {
       "https://example.com/extra",
     ]);
   });
+  it("does not rewrite code when nothing is cited", () => {
+    const text =
+      "Use refresh().\n\n```python\n    def f():\n        return 1  \n```\n";
+    expect(annotateMarkdown(text, [])).toBe(text);
+  });
+  it("cleans only the citation gap and leaves other whitespace alone", () => {
+    const text = "Call refresh().\n    nested\nSee [1] now\nhello  \nworld";
+    const start = text.indexOf("[1]");
+    expect(
+      annotateMarkdown(text, [
+        {
+          url: "https://example.com",
+          title: "Example",
+          start,
+          end: start + 3,
+        },
+      ]),
+    ).toBe("Call refresh().\n    nested\nSee now\nhello  \nworld");
+  });
   it("removes the raw citation text from the answer", () => {
     const text =
       "The team is in Indiranagar.\n(linkedin.com(https://www.linkedin.com/posts/job))";

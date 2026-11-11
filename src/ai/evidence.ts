@@ -53,6 +53,29 @@ export function normalizeResponse(response: Response) {
     usage: response.usage,
   };
 }
+function cutCitation(text: string, start: number, end: number) {
+  if (text[start - 1] === "(" && text[end] === ")") {
+    start -= 1;
+    end += 1;
+  }
+  let before = text.slice(0, start);
+  let after = text.slice(end);
+  const sameLineGap =
+    !before.endsWith("\n") &&
+    !after.startsWith("\n") &&
+    /[ \t]$/.test(before) &&
+    /^[ \t]/.test(after);
+  if (sameLineGap) {
+    before = before.replace(/[ \t]+$/, "");
+    after = after.replace(/^[ \t]+/, "");
+    return `${before} ${after}`;
+  }
+  if (/[ \t]$/.test(before) && (after === "" || after.startsWith("\n")))
+    before = before.replace(/[ \t]+$/, "");
+  if (before.endsWith("\n") && after.startsWith("\n")) after = after.slice(1);
+  else if (before.endsWith("\n") && after === "") before = before.slice(0, -1);
+  return before + after;
+}
 export function annotateMarkdown(text: string, citations: Citation[]) {
   const sorted = [...citations]
     .filter(
@@ -62,14 +85,9 @@ export function annotateMarkdown(text: string, citations: Citation[]) {
         citation.end <= text.length,
     )
     .sort((a, b) => b.start - a.start);
-  let result = text;
-  for (const citation of sorted)
-    result = result.slice(0, citation.start) + result.slice(citation.end);
-  return result
-    .replace(/\(\s*\)/g, "")
-    .replace(/[ \t]{2,}/g, " ")
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .replace(/[ \t]+$/gm, "")
-    .trim();
+  if (!sorted.length) return text;
+  return sorted.reduce(
+    (current, citation) => cutCitation(current, citation.start, citation.end),
+    text,
+  );
 }
