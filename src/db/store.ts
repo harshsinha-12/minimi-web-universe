@@ -77,6 +77,8 @@ export class Store {
       CREATE TABLE IF NOT EXISTS forgotten(owner TEXT NOT NULL, fingerprint TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(owner,fingerprint));
       CREATE TABLE IF NOT EXISTS memory_exclusions(owner TEXT NOT NULL, message_id TEXT NOT NULL, PRIMARY KEY(owner,message_id));
       CREATE TABLE IF NOT EXISTS search_passes(id TEXT PRIMARY KEY,owner TEXT NOT NULL,run_id TEXT NOT NULL REFERENCES runs(id),response_id TEXT NOT NULL,observed_at TEXT NOT NULL,artifact TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS page_observations(url TEXT PRIMARY KEY, etag TEXT, last_modified TEXT, text_hash TEXT NOT NULL, title TEXT NOT NULL, excerpt TEXT NOT NULL, fetched_at TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS search_lookups(owner TEXT NOT NULL, question_key TEXT NOT NULL, urls TEXT NOT NULL, saved_at TEXT NOT NULL, PRIMARY KEY(owner, question_key));
     `);
     initializeSemanticJobs(this.db);
   }
@@ -607,6 +609,86 @@ export class Store {
       .filter((m) => m.role === "user" && !excluded.has(m.id))
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   }
+  savePageObservation(page: {
+    url: string;
+    etag: string | null;
+    lastModified: string | null;
+    textHash: string;
+    title: string;
+    excerpt: string;
+    fetchedAt: string;
+  }) {
+    this.db
+      .prepare(
+        `INSERT INTO page_observations(url,etag,last_modified,text_hash,title,excerpt,fetched_at) VALUES(?,?,?,?,?,?,?)
+         ON CONFLICT(url) DO UPDATE SET etag=excluded.etag,last_modified=excluded.last_modified,text_hash=excluded.text_hash,title=excluded.title,excerpt=excluded.excerpt,fetched_at=excluded.fetched_at`,
+      )
+      .run(
+        page.url,
+        page.etag,
+        page.lastModified,
+        page.textHash,
+        page.title,
+        page.excerpt,
+        page.fetchedAt,
+      );
+  }
+  pageObservation(url: string) {
+    const row = this.db
+      .prepare("SELECT * FROM page_observations WHERE url=?")
+      .get(url) as
+      | {
+          url: string;
+          etag: string | null;
+          last_modified: string | null;
+          text_hash: string;
+          title: string;
+          excerpt: string;
+          fetched_at: string;
+        }
+      | undefined;
+    if (!row) return null;
+    return {
+      url: row.url,
+      etag: row.etag,
+      lastModified: row.last_modified,
+      textHash: row.text_hash,
+      title: row.title,
+      excerpt: row.excerpt,
+      fetchedAt: row.fetched_at,
+    };
+  }
+  saveSearchLookup(
+    owner: string,
+    questionKey: string,
+    urls: string[],
+    savedAt: string,
+  ) {
+    this.owner(owner);
+    this.db
+      .prepare(
+        `INSERT INTO search_lookups(owner,question_key,urls,saved_at) VALUES(?,?,?,?)
+         ON CONFLICT(owner,question_key) DO UPDATE SET urls=excluded.urls,saved_at=excluded.saved_at`,
+      )
+      .run(owner, questionKey, JSON.stringify(urls), savedAt);
+  }
+  searchLookup(owner: string, questionKey: string) {
+    const row = this.db
+      .prepare(
+        "SELECT urls,saved_at FROM search_lookups WHERE owner=? AND question_key=?",
+      )
+      .get(owner, questionKey) as
+      { urls: string; saved_at: string } | undefined;
+    if (!row) return null;
+    try {
+      const urls = JSON.parse(row.urls);
+      if (!Array.isArray(urls) || urls.some((url) => typeof url !== "string"))
+        return null;
+      return { urls, savedAt: row.saved_at };
+    } catch {
+      return null;
+    }
+  }
 }
 const scope = globalThis as typeof globalThis & {
   minimiStore?: Store;
@@ -616,11 +698,11 @@ export function getStore() {
   if (
     !scope.minimiStore ||
     !(scope.minimiStore instanceof Store) ||
-    scope.minimiStoreVersion !== 2
+    scope.minimiStoreVersion !== 3
   ) {
     scope.minimiStore?.close();
     scope.minimiStore = new Store(settings.database);
-    scope.minimiStoreVersion = 2;
+    scope.minimiStoreVersion = 3;
   }
   return scope.minimiStore;
 }

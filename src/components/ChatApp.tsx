@@ -769,6 +769,9 @@ export default function ChatApp() {
                                     traces[m.id].metrics.searchActions ?? 0,
                                   )}{" "}
                                   search actions
+                                  {traces[m.id].metrics.searchCache
+                                    ? ` · ${String(traces[m.id].metrics.searchCache)}`
+                                    : ""}
                                 </p>
                               )}
                               <SourcePreviews messageId={m.id} />

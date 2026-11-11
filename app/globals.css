@@ -804,7 +804,8 @@ kbd {
   font-size: 10px;
   color: #8b8173;
 }
-.research-details > div:not(.source-list) {
+.research-details
+  > div:not(.source-list):not(.source-previews):not(.source-preview-block) {
   display: flex;
   gap: 15px;
   padding: 5px 0;
@@ -1152,10 +1153,49 @@ kbd {
   gap: 10px;
   margin: 16px 0;
 }
+.research-details .preview-note {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: #8a837a;
+}
+.preview-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.chip {
+  border-radius: 999px;
+  padding: 2px 7px;
+  font-size: 10px;
+  line-height: 1.4;
+  background: #f3f0ea;
+  color: #6f675f;
+}
+.chip.positive,
+.chip.high,
+.chip.unchanged {
+  background: #e7f0e4;
+  color: #3f6244;
+}
+.chip.negative,
+.chip.low,
+.chip.changed {
+  background: #f8e6e0;
+  color: #8a4638;
+}
+.chip.mixed,
+.chip.medium {
+  background: #f8efd8;
+  color: #7a5b22;
+}
 .source-preview {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  max-width: 320px;
   border: 1px solid var(--line, #e6e0d7);
   border-radius: 14px;
   background: #fffdf9;

@@ -10,6 +10,8 @@ export const settings = {
   memoryEnabled: process.env.MEMORY_ENABLED !== "false",
   judgeModel: process.env.JUDGE_MODEL || "gpt-5.4-mini",
   transcribeModel: process.env.TRANSCRIBE_MODEL || "gpt-4o-mini-transcribe",
+  searchReuse: process.env.SEARCH_REUSE !== "false",
+  searchRevalidateMs: Number(process.env.SEARCH_REVALIDATE_MS || 800) || 800,
   semanticEnabled: process.env.PINECONE_ENABLED === "true",
   embeddingModel: process.env.EMBEDDING_MODEL || "text-embedding-3-small",
   embeddingDimensions: Number(process.env.EMBEDDING_DIMENSIONS || 1536),

@@ -30,6 +30,13 @@ export function previewURL(raw: string, base?: string) {
   url.hash = "";
   return url;
 }
+export function canonicalPageUrl(raw: string) {
+  try {
+    return previewURL(raw).href;
+  } catch {
+    return null;
+  }
+}
 const publicLookup: LookupFunction = (hostname, options, callback) => {
   lookup(hostname, { all: true, verbatim: true }, (error, addresses) => {
     if (error) return callback(error, "", 4);
@@ -43,12 +50,28 @@ const publicLookup: LookupFunction = (hostname, options, callback) => {
     else callback(null, addresses[0].address, addresses[0].family);
   });
 };
+export type PreviewResource = {
+  body: Buffer;
+  type: string;
+  url: string;
+  status: number;
+  etag: string | null;
+  lastModified: string | null;
+};
+function header(
+  response: { headers: Record<string, string | string[] | undefined> },
+  name: string,
+) {
+  const value = response.headers[name];
+  return typeof value === "string" ? value : null;
+}
 export function fetchPreviewResource(
   raw: string,
   kind: "html" | "image",
   signal: AbortSignal,
   redirects = 0,
-): Promise<{ body: Buffer; type: string; url: string }> {
+  validators?: { etag?: string | null; lastModified?: string | null },
+): Promise<PreviewResource> {
   const url = previewURL(raw);
   return new Promise((resolve, reject) => {
     const request = get(
@@ -64,6 +87,12 @@ export function fetchPreviewResource(
               ? "text/html"
               : "image/avif,image/webp,image/png,image/jpeg,image/gif",
           "Accept-Encoding": "identity",
+          ...(redirects === 0 && validators?.etag
+            ? { "If-None-Match": validators.etag }
+            : {}),
+          ...(redirects === 0 && validators?.lastModified
+            ? { "If-Modified-Since": validators.lastModified }
+            : {}),
         },
       },
       (response) => {
@@ -86,6 +115,21 @@ export function fetchPreviewResource(
           } catch (error) {
             reject(error);
           }
+          return;
+        }
+        if (status === 304 && redirects === 0 && validators) {
+          response.destroy();
+          resolve({
+            body: Buffer.alloc(0),
+            type: "",
+            url: url.href,
+            status: 304,
+            etag: header(response, "etag") ?? validators.etag ?? null,
+            lastModified:
+              header(response, "last-modified") ??
+              validators.lastModified ??
+              null,
+          });
           return;
         }
         const type = String(response.headers["content-type"] ?? "")
@@ -119,7 +163,14 @@ export function fetchPreviewResource(
           chunks.push(chunk);
         });
         response.on("end", () =>
-          resolve({ body: Buffer.concat(chunks), type, url: url.href }),
+          resolve({
+            body: Buffer.concat(chunks),
+            type,
+            url: url.href,
+            status,
+            etag: header(response, "etag"),
+            lastModified: header(response, "last-modified"),
+          }),
         );
         response.on("error", reject);
       },

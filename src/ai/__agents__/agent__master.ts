@@ -1,5 +1,7 @@
 import { SYSTEM } from "../__prompts__/prompt__answer";
 import { webSearchTools } from "../__tools__/tool__web_search";
+import { isContextDependent, turnSearchMode } from "../search-cache";
+import { prepareSearchRefresh, rememberSearch } from "../search-refresh";
 import { reviewResearch } from "./agent__research_review";
 import OpenAI from "openai";
 import type {
@@ -72,9 +74,27 @@ export async function runAgent(args: {
     const fresh = policy.required;
     const historyOnly = !policy.allow;
     const held = recheck;
+    const prepared = policy.allow
+      ? await prepareSearchRefresh({
+          store,
+          owner,
+          conversationId,
+          question,
+          forceSearch,
+          recheck,
+          signal,
+        })
+      : { reuse: false, note: "", detail: "", sources: [] };
+    const reuse = prepared.reuse;
+    if (prepared.detail) stage("searching", prepared.detail);
+    const searchMode = turnSearchMode({
+      allow: policy.allow,
+      required: policy.required,
+      reuse,
+    });
     const client = new OpenAI({ maxRetries: 1, timeout: settings.deadline });
     const localTime = DateTime.now().setZone(timezone);
-    const instructions = `${SYSTEM}\nCurrent instant: ${new Date().toISOString()}. User timezone: ${timezone}. Current LOCAL date: ${localTime.isValid ? localTime.toFormat("cccc, d LLLL yyyy") : "unknown; use UTC"}.\nWeb search allowed for this request: ${policy.allow}. If disallowed, do not claim fresh verification.\nResolved historical interval: ${context.window ? JSON.stringify(context.window) : "not specified"}.\nHistory retrieval missing: ${context.missing}. Date result truncated: ${context.dateTruncated}. If truncated, say the displayed history is partial.\n`;
+    const instructions = `${SYSTEM}\nCurrent instant: ${new Date().toISOString()}. User timezone: ${timezone}. Current LOCAL date: ${localTime.isValid ? localTime.toFormat("cccc, d LLLL yyyy") : "unknown; use UTC"}.\nWeb search allowed for this request: ${searchMode.search}. ${reuse ? "Hosted web search is skipped because the saved pages were revalidated below." : "If disallowed, do not claim fresh verification."}\nResolved historical interval: ${context.window ? JSON.stringify(context.window) : "not specified"}.\nHistory retrieval missing: ${context.missing}. Date result truncated: ${context.dateTruncated}. If truncated, say the displayed history is partial.\n${prepared.note}`;
     const data = JSON.stringify({
       memories: context.memories.map((m) => ({
         kind: m.kind,
@@ -123,8 +143,8 @@ export async function runAgent(args: {
           model: settings.model,
           instructions,
           input,
-          tools: webSearchTools(!historyOnly, held),
-          tool_choice: fresh ? "required" : "auto",
+          tools: searchMode.search ? webSearchTools(true, held) : [],
+          tool_choice: searchMode.toolChoice,
           include: [
             "web_search_call.action.sources",
             "reasoning.encrypted_content",
@@ -217,6 +237,10 @@ export async function runAgent(args: {
       ];
     }
     if (!result) throw new Error("No response was produced.");
+    if (reuse)
+      for (const source of prepared.sources)
+        if (!result.sources.some((item) => item.url === source.url))
+          result.sources.push(source);
     if (fresh && result.citations.length === 0 && result.actions.length > 0)
       result.text +=
         "\n\nI could not attach verifiable inline citations to this check; treat the external facts above as unverified.";
@@ -233,7 +257,24 @@ export async function runAgent(args: {
       memoryEntries: context.memories.length,
       semanticHits: context.semanticHits,
       responseId: response?.id,
+      ...(prepared.detail ? { searchCache: prepared.detail } : {}),
     };
+    if (policy.allow && result.sources.length)
+      void rememberSearch(
+        store,
+        owner,
+        conversationId,
+        question,
+        result.sources,
+        {
+          touchLookup: !reuse && !isContextDependent(question),
+        },
+      ).catch((error) =>
+        logger.warn(
+          { component: "search-cache", err: error },
+          "could not save source pages",
+        ),
+      );
     const message = store.finish(
       owner,
       runId,
