@@ -505,7 +505,7 @@ nav {
   color: #785c4a;
 }
 .source-cluster {
-  display: contents;
+  display: inline-flex;
 }
 .source-cluster-button {
   margin-right: auto;
@@ -539,12 +539,59 @@ nav {
   color: #6d567f;
   font-size: 11px;
 }
-.source-sheet {
-  flex: 1 0 100%;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  min-width: 0;
+.sources-sidebar {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 40;
+  width: min(360px, 100%);
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  padding: 18px 16px 24px;
+  background: #f7f4ee;
+  border-left: 1px solid #e6e0d6;
+}
+.sources-sidebar header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.sources-sidebar header strong {
+  font-size: 16px;
+}
+.sources-sidebar-list {
+  display: flex;
+  flex-direction: column;
   gap: 8px;
+  margin-top: 14px;
+  overflow: auto;
+}
+.sources-sidebar .source-card {
+  width: 100%;
+}
+.sources-sidebar .source-card strong,
+.sources-sidebar .source-card em {
+  max-width: 100%;
+}
+.sources-scrim {
+  display: none;
+}
+@media (min-width: 980px) {
+  .sources-open .main {
+    margin-right: 360px;
+  }
+}
+@media (max-width: 979px) {
+  .sources-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 35;
+    border: 0;
+    background: #26232b44;
+  }
 }
 .source-card {
   display: flex;
