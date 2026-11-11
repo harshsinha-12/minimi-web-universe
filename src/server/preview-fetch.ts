@@ -67,7 +67,7 @@ function header(
 }
 export function fetchPreviewResource(
   raw: string,
-  kind: "html" | "image",
+  kind: "html" | "image" | "icon",
   signal: AbortSignal,
   redirects = 0,
   validators?: { etag?: string | null; lastModified?: string | null },
@@ -136,23 +136,32 @@ export function fetchPreviewResource(
           .split(";")[0]
           .trim()
           .toLowerCase();
+        const images = [
+          "image/jpeg",
+          "image/png",
+          "image/webp",
+          "image/gif",
+          "image/avif",
+        ];
         const allowed =
           kind === "html"
             ? ["text/html", "application/xhtml+xml"]
-            : [
-                "image/jpeg",
-                "image/png",
-                "image/webp",
-                "image/gif",
-                "image/avif",
-              ];
+            : kind === "icon"
+              ? [
+                  ...images,
+                  "image/x-icon",
+                  "image/vnd.microsoft.icon",
+                  "image/ico",
+                ]
+              : images;
         if (status !== 200 || !allowed.includes(type)) {
           response.destroy();
           reject(new Error("Preview unavailable"));
           return;
         }
         const chunks: Buffer[] = [];
-        const limit = kind === "html" ? 512000 : 2000000;
+        const limit =
+          kind === "html" ? 512000 : kind === "icon" ? 256000 : 2000000;
         let size = 0;
         response.on("data", (chunk: Buffer) => {
           size += chunk.length;
