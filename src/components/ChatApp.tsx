@@ -26,7 +26,6 @@ import {
   Trash2,
   X,
   Leaf,
-  Clock3,
   SlidersHorizontal,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
@@ -35,7 +34,10 @@ import type { Conversation, Memory, Message, Trace } from "../types";
 import { annotateMarkdown } from "../ai/evidence";
 import { consumeEvents } from "../stream/sse";
 import { Cat } from "./Cat";
-import { SourcePreviews } from "./SourcePreviews";
+import { formatAnswer } from "./chat-export";
+import { ChatActions } from "./ChatActions";
+import { SourcePills } from "./SourcePills";
+import { ThoughtTrace } from "./ThoughtTrace";
 import { VoiceInput } from "./VoiceInput";
 
 type Bootstrap = {
@@ -102,7 +104,6 @@ export default function ChatApp() {
   const [traces, setTraces] = useState<
     Record<string, { trace: Trace[]; metrics: Record<string, unknown> }>
   >({});
-  const [traceOpen, setTraceOpen] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const abort = useRef<AbortController | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
@@ -183,7 +184,6 @@ export default function ChatApp() {
     abort.current = controller;
     let id = thread;
     let finished = false;
-    let runId = "";
     const trace: Trace[] = [];
     const optimisticId = crypto.randomUUID();
     try {
@@ -239,14 +239,18 @@ export default function ChatApp() {
       if (!response.body)
         throw new Error("Streaming is not available in this browser.");
       await consumeEvents(response.body, (event) => {
-        if (event.type === "started") runId = String(event.runId);
         if (event.type === "progress") {
-          setProgress(String(event.detail));
-          trace.push({
+          const step = {
             at: Number(event.at),
             stage: String(event.stage),
             detail: String(event.detail),
-          });
+          };
+          setProgress(step.detail);
+          trace.push(step);
+          setTraces((old) => ({
+            ...old,
+            [optimisticId]: { trace: [...trace], metrics: {} },
+          }));
         }
         if (event.type === "delta")
           setMessages((old) =>
@@ -313,24 +317,28 @@ export default function ChatApp() {
         ).catch(() => null);
         if (data && !controller.signal.aborted) setMessages(data.messages);
       }
-      if (runId && trace.length)
-        setTraces((old) => ({ ...old, [runId]: { trace, metrics: {} } }));
+      if (trace.length)
+        setTraces((old) => ({
+          ...old,
+          [optimisticId]: {
+            trace: [...trace],
+            metrics: old[optimisticId]?.metrics ?? {},
+          },
+        }));
       input.current?.focus();
     }
   }
-  async function showDetails(message: Message) {
-    if (traceOpen === message.id) {
-      setTraceOpen(null);
-      return;
-    }
-    setTraceOpen(message.id);
-    if (!traces[message.id] && message.runId) {
-      const r = await json<{
-        trace: Trace[];
-        metrics: Record<string, unknown>;
-      }>(`/api/runs/${message.runId}`);
-      setTraces((old) => ({ ...old, [message.id]: r }));
-    }
+  async function loadTrace(message: Message) {
+    if (!message.runId || traces[message.id]?.trace?.length) return;
+    const run = await json<{
+      trace: Trace[];
+      metrics: Record<string, unknown>;
+    }>(`/api/runs/${message.runId}`);
+    setTraces((old) =>
+      old[message.id]?.trace?.length
+        ? old
+        : { ...old, [message.id]: { trace: run.trace, metrics: run.metrics } },
+    );
   }
   const count = boot?.conversations.length ?? 0;
   const currentTitle = boot?.conversations.find((c) => c.id === thread)?.title;
@@ -675,13 +683,20 @@ export default function ChatApp() {
                         <div className="assistant-label">
                           <Cat small />
                           <span>minimi</span>
-                          {m.status === "running" && (
-                            <span className="thinking-label">
-                              <span className="thinking-dot" />
-                              {progress || "Thinking"}
-                            </span>
-                          )}
                         </div>
+                      )}
+                      {m.role === "assistant" && (
+                        <ThoughtTrace
+                          running={m.status === "running"}
+                          steps={traces[m.id]?.trace ?? []}
+                          elapsedMs={
+                            typeof traces[m.id]?.metrics.elapsedMs === "number"
+                              ? (traces[m.id]?.metrics.elapsedMs as number)
+                              : null
+                          }
+                          runId={m.runId}
+                          onLoad={() => void loadTrace(m)}
+                        />
                       )}
                       <div className="message-body">
                         {m.content ? (
@@ -716,84 +731,53 @@ export default function ChatApp() {
                       {m.role === "assistant" && m.status !== "running" && (
                         <>
                           <div className="message-actions">
-                            {m.sources.length > 0 && (
+                            {(m.sources.length > 0 ||
+                              m.citations.length > 0) && (
+                              <SourcePills
+                                messageId={m.id}
+                                sources={m.sources}
+                                citations={m.citations}
+                              />
+                            )}
+                            {m.id ===
+                            [...messages]
+                              .reverse()
+                              .find(
+                                (item) =>
+                                  item.role === "assistant" &&
+                                  item.status !== "running",
+                              )?.id ? (
+                              <ChatActions
+                                answer={m}
+                                messages={messages}
+                                title={currentTitle || "minimi chat"}
+                              />
+                            ) : (
                               <button
-                                className="sources-button"
-                                onClick={() => void showDetails(m)}
+                                type="button"
+                                className="icon-btn"
+                                aria-label="Copy answer"
+                                onClick={() => {
+                                  void navigator.clipboard.writeText(
+                                    formatAnswer(m),
+                                  );
+                                  setCopied(m.id);
+                                  setTimeout(() => setCopied(null), 1600);
+                                }}
                               >
-                                <Globe2 size={13} /> {m.sources.length} sources
+                                {copied === m.id ? (
+                                  <Check size={14} />
+                                ) : (
+                                  <Copy size={14} />
+                                )}
                               </button>
                             )}
-                            <button
-                              className="icon-btn"
-                              aria-label="Copy answer"
-                              onClick={() => {
-                                void navigator.clipboard.writeText(m.content);
-                                setCopied(m.id);
-                                setTimeout(() => setCopied(null), 1600);
-                              }}
-                            >
-                              {copied === m.id ? (
-                                <Check size={14} />
-                              ) : (
-                                <Copy size={14} />
-                              )}
-                            </button>
-                            <button
-                              className="text-btn details-trigger"
-                              onClick={() => void showDetails(m)}
-                            >
-                              <Clock3 size={13} /> Research details
-                            </button>
                             {m.status !== "completed" && (
                               <span className="interrupted-label">
                                 {m.status}
                               </span>
                             )}
                           </div>
-                          {traceOpen === m.id && (
-                            <div className="research-details">
-                              {traces[m.id]?.trace.map((t, i) => (
-                                <div key={i}>
-                                  <span>{(t.at / 1000).toFixed(1)}s</span>
-                                  {t.detail}
-                                </div>
-                              ))}
-                              {traces[m.id]?.metrics && (
-                                <p>
-                                  {String(
-                                    traces[m.id].metrics.inputTokens ?? "—",
-                                  )}{" "}
-                                  input tokens ·{" "}
-                                  {String(
-                                    traces[m.id].metrics.searchActions ?? 0,
-                                  )}{" "}
-                                  search actions
-                                  {traces[m.id].metrics.searchCache
-                                    ? ` · ${String(traces[m.id].metrics.searchCache)}`
-                                    : ""}
-                                </p>
-                              )}
-                              <SourcePreviews messageId={m.id} />
-                              <div className="source-list">
-                                {m.sources.map((s) => (
-                                  <a
-                                    key={s.url}
-                                    href={s.url}
-                                    title={`${s.title || new URL(s.url).hostname}\n${s.url}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                  >
-                                    <Globe2 size={13} />
-                                    <span>
-                                      {s.title || new URL(s.url).hostname}
-                                    </span>
-                                    <ArrowUpRight size={13} />
-                                  </a>
-                                ))}
-                              </div>
-                            </div>
-                          )}
                         </>
                       )}
                     </article>

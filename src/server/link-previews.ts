@@ -11,6 +11,7 @@ export type LinkPreview = {
   description: string;
   domain: string;
   image: string | null;
+  icon: string | null;
   excerpt: string;
   textHash: string;
   sentiment: { label: SentimentLabel; reason: string };
@@ -22,6 +23,7 @@ export type FetchedPreview = LinkPreview & {
 };
 export function extractPreview(html: string, page: string): LinkPreview {
   const meta = new Map<string, string>();
+  const icons: { href: string; score: number }[] = [];
   let title = "",
     inTitle = false;
   const parser = new Parser(
@@ -30,6 +32,16 @@ export function extractPreview(html: string, page: string): LinkPreview {
         if (name === "meta") {
           const key = (attrs.property || attrs.name || "").toLowerCase();
           if (attrs.content && !meta.has(key)) meta.set(key, attrs.content);
+        }
+        if (name === "link" && attrs.href) {
+          const rel = (attrs.rel || "").toLowerCase();
+          const type = (attrs.type || "").toLowerCase();
+          if (!/(?:^|\s)(?:icon|apple-touch-icon)(?:\s|$)/.test(rel)) return;
+          if (type.includes("svg") || /\.svg(?:$|\?)/i.test(attrs.href)) return;
+          const size = Number(String(attrs.sizes || "").split("x")[0]);
+          let score = /apple-touch-icon/.test(rel) ? 3 : 1;
+          if (size >= 32 && size <= 192) score += 2;
+          icons.push({ href: attrs.href, score });
         }
         if (name === "title") inTitle = true;
       },
@@ -53,6 +65,15 @@ export function extractPreview(html: string, page: string): LinkPreview {
   } catch {
     /* Text fallback for invalid images. */
   }
+  let icon: string | null = null;
+  const bestIcon = icons.sort((a, b) => b.score - a.score)[0];
+  if (bestIcon) {
+    try {
+      icon = previewURL(bestIcon.href, page).href;
+    } catch {
+      icon = null;
+    }
+  }
   const resolvedTitle = (
     meta.get("og:title") ||
     meta.get("twitter:title") ||
@@ -71,6 +92,7 @@ export function extractPreview(html: string, page: string): LinkPreview {
     title: resolvedTitle,
     description,
     image,
+    icon,
     excerpt: fingerprint.excerpt,
     textHash: fingerprint.hash,
     sentiment: previewSentiment(resolvedTitle, description),
