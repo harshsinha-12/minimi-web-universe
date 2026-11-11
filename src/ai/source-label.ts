@@ -24,6 +24,8 @@ const brands: Record<string, string> = {
   "projectminimi.com": "minimi",
   "razorpay.com": "Razorpay",
   "indianexpress.com": "Indian Express",
+  "espncricinfo.com": "ESPNcricinfo",
+  "icc-cricket.com": "ICC",
 };
 
 export function sourceName(url: string, title?: string) {
@@ -36,8 +38,15 @@ export function sourceName(url: string, title?: string) {
     }
     const stem = labels.length >= 2 ? labels[labels.length - 2] : labels[0];
     if (!stem) return title?.slice(0, 40) || "Source";
-    if (stem.length <= 3) return stem.toUpperCase();
-    return stem.charAt(0).toUpperCase() + stem.slice(1);
+    return stem
+      .split("-")
+      .filter(Boolean)
+      .map((part) =>
+        part.length <= 3
+          ? part.toUpperCase()
+          : part.charAt(0).toUpperCase() + part.slice(1),
+      )
+      .join(" ");
   } catch {
     return title?.slice(0, 40) || "Source";
   }
