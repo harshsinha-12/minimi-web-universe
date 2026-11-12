@@ -8,6 +8,7 @@ export type VectorMatch = {
   metadata?: VectorMetadata;
 };
 export interface VectorIndex {
+  delete(namespace: string, ids: string[], signal: AbortSignal): Promise<void>;
   upsert(
     namespace: string,
     records: { id: string; values: number[]; metadata: VectorMetadata }[],
@@ -29,7 +30,7 @@ export function pineconeReady() {
     )
   );
 }
-export function pineconeIndex(): VectorIndex {
+export function pineconeIndex(host = settings.pineconeHost): VectorIndex {
   const index = (signal: AbortSignal) =>
     new Pinecone({
       apiKey: process.env.PINECONE_API_KEY!,
@@ -39,8 +40,11 @@ export function pineconeIndex(): VectorIndex {
           ...init,
           signal: AbortSignal.any([signal, AbortSignal.timeout(15000)]),
         }),
-    }).index<VectorMetadata>({ host: settings.pineconeHost });
+    }).index<VectorMetadata>({ host });
   return {
+    async delete(namespace, ids, signal) {
+      await index(signal).deleteMany({ namespace, ids });
+    },
     async upsert(namespace, records, signal) {
       await index(signal).upsert({ namespace, records });
     },

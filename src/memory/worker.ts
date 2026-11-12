@@ -1,5 +1,7 @@
 import { getStore, type Job } from "../db/store";
 import { settings } from "../config";
+import { cleanupContextCache } from "../cache/redis";
+import { cleanupNextVectors } from "./vector-cleanup";
 import { redis } from "../cache/redis";
 import { synthesize } from "../ai/__agents__/agent__memory";
 import { indexNextMessage } from "./semantic";
@@ -23,11 +25,10 @@ async function tick() {
     job = store.claimJob();
     if (!job) return;
     const messages = store.jobMessages(job);
-    const previous = store.memories(job.owner);
+    const previous = store.memories(job.owner).filter((m) => !m.userEdited);
     const result = await synthesize(
       messages,
       previous,
-      store.forgotten(job.owner),
       AbortSignal.timeout(55000),
     );
     if (!store.completeMemory(job, result.proposal.entries))
@@ -54,9 +55,15 @@ async function tick() {
 const timer = setInterval(() => void tick(), 3000);
 let indexing = false;
 async function indexTick() {
-  if (stopping || indexing || !pineconeReady()) return;
+  if (stopping || indexing) return;
   indexing = true;
   try {
+    const cache = store.db
+      .prepare("SELECT owner FROM cache_cleanup LIMIT 1")
+      .get() as { owner: string } | undefined;
+    if (cache) await cleanupContextCache(store, cache.owner);
+    if (process.env.PINECONE_API_KEY) await cleanupNextVectors(store);
+    if (!pineconeReady()) return;
     const result = await indexNextMessage(store);
     if (result)
       log.info(

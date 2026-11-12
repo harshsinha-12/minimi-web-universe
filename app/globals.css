@@ -1522,3 +1522,69 @@ kbd {
   color: #847e77;
   margin: 6px 0 0;
 }
+
+.thread-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.thread-row .thread {
+  flex: 1;
+  min-width: 0;
+}
+.thread-row > .icon-btn {
+  flex-shrink: 0;
+}
+.edit-panel {
+  margin: 16px auto;
+  padding: 20px;
+  width: min(90%, 760px);
+  border: 1px solid #ccc4b6;
+  border-radius: 12px;
+}
+.edit-panel label {
+  display: block;
+  margin-bottom: 8px;
+}
+.edit-panel textarea {
+  width: 100%;
+  resize: vertical;
+  padding: 12px;
+  color: inherit;
+  background: #fffdf7;
+  border: 1px solid #ccc4b6;
+  border-radius: 8px;
+  font: inherit;
+}
+.edit-panel > div {
+  display: flex;
+  gap: 24px;
+  margin-top: 12px;
+}
+.message-edit-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 8px;
+}
+.evidence-details {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #dcd5ca;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.evidence-details summary {
+  cursor: pointer;
+}
+.evidence-details article {
+  margin: 12px 0;
+  border-top: 1px solid #dcd5ca;
+  padding-top: 12px;
+}
+.evidence-details blockquote {
+  margin: 8px 0;
+  padding-left: 12px;
+  border-left: 2px solid #b9add1;
+}

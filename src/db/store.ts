@@ -1,8 +1,10 @@
+import type { EvidenceAudit } from "../ai/claim-audit";
 import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { settings } from "../config";
+import { queueVectorCleanup } from "../memory/vector-cleanup";
 import { initializeSemanticJobs } from "../memory/index-jobs";
 import type {
   Citation,
@@ -39,6 +41,8 @@ export type Job = {
   target: number;
 };
 const now = () => new Date().toISOString();
+const memoryFingerprint = (text: string) =>
+  `sha256:${createHash("sha256").update(text.toLowerCase().trim()).digest("hex")}`;
 const mapMessage = (r: MessageRow): Message => ({
   id: r.id,
   conversationId: r.conversation_id,
@@ -80,7 +84,33 @@ export class Store {
       CREATE TABLE IF NOT EXISTS page_observations(url TEXT PRIMARY KEY, etag TEXT, last_modified TEXT, text_hash TEXT NOT NULL, title TEXT NOT NULL, excerpt TEXT NOT NULL, fetched_at TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS search_lookups(owner TEXT NOT NULL, question_key TEXT NOT NULL, urls TEXT NOT NULL, saved_at TEXT NOT NULL, PRIMARY KEY(owner, question_key));
     `);
+    this.db.exec(`
+      CREATE TRIGGER IF NOT EXISTS message_delete AFTER DELETE ON messages BEGIN INSERT INTO message_fts(message_fts,rowid,content) VALUES('delete',old.rowid,old.content); END;
+      CREATE TRIGGER IF NOT EXISTS message_update AFTER UPDATE OF content ON messages BEGIN
+        INSERT INTO message_fts(message_fts,rowid,content) VALUES('delete',old.rowid,old.content);
+        INSERT INTO message_fts(rowid,content) VALUES(new.rowid,new.content);
+      END;
+      CREATE TABLE IF NOT EXISTS evidence_audits(message_id TEXT PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,owner TEXT NOT NULL,audit TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS claim_support(id TEXT PRIMARY KEY,message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,owner TEXT NOT NULL,record TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS comparisons(id TEXT PRIMARY KEY,message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,owner TEXT NOT NULL,record TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS memory_overrides(id TEXT PRIMARY KEY,owner TEXT NOT NULL,kind TEXT NOT NULL,content TEXT NOT NULL,sources TEXT NOT NULL,created_at TEXT NOT NULL,version INTEGER NOT NULL);
+    `);
     initializeSemanticJobs(this.db);
+    // Legacy tombstones held plaintext. Keep only opaque fingerprints, including after source deletion.
+    this.db.transaction(() => {
+      const rows = this.db
+        .prepare("SELECT owner,fingerprint,created_at FROM forgotten")
+        .all() as { owner: string; fingerprint: string; created_at: string }[];
+      for (const row of rows)
+        if (!/^sha256:[a-f0-9]{64}$/.test(row.fingerprint)) {
+          this.db
+            .prepare("INSERT OR IGNORE INTO forgotten VALUES(?,?,?)")
+            .run(row.owner, memoryFingerprint(row.fingerprint), row.created_at);
+          this.db
+            .prepare("DELETE FROM forgotten WHERE owner=? AND fingerprint=?")
+            .run(row.owner, row.fingerprint);
+        }
+    })();
   }
   close() {
     this.db.close();
@@ -128,13 +158,21 @@ export class Store {
           "SELECT * FROM messages WHERE owner=? AND conversation_id=? ORDER BY created_at,rowid",
         )
         .all(owner, conversationId) as MessageRow[]
-    ).map(mapMessage);
+    ).map((r) => this.withEvidence(owner, mapMessage(r)));
   }
   message(owner: string, id: string): Message | null {
     const row = this.db
       .prepare("SELECT * FROM messages WHERE owner=? AND id=?")
       .get(owner, id) as MessageRow | undefined;
-    return row ? mapMessage(row) : null;
+    return row ? this.withEvidence(owner, mapMessage(row)) : null;
+  }
+  private withEvidence(owner: string, message: Message): Message {
+    const row = this.db
+      .prepare(
+        "SELECT audit FROM evidence_audits WHERE owner=? AND message_id=?",
+      )
+      .get(owner, message.id) as { audit: string } | undefined;
+    return row ? { ...message, evidence: JSON.parse(row.audit) } : message;
   }
   history(
     owner: string,
@@ -293,7 +331,8 @@ export class Store {
     responseId: string,
     artifact: unknown,
   ) {
-    if (!this.run(owner, runId)) throw new Error("Run not found");
+    if (this.run(owner, runId)?.status !== "running")
+      throw new Error("Conversation data changed; research stopped");
     this.db
       .prepare("INSERT INTO search_passes VALUES(?,?,?,?,?,?)")
       .run(
@@ -315,6 +354,7 @@ export class Store {
     metrics: Record<string, unknown>,
     status = "completed",
     error: string | null = null,
+    evidence?: EvidenceAudit,
   ): Message | null {
     return this.db.transaction(() => {
       const run = this.run(owner, runId);
@@ -359,6 +399,19 @@ export class Store {
       this.db
         .prepare("UPDATE conversations SET updated_at=? WHERE id=?")
         .run(at, run.conversationId);
+      if (evidence) {
+        this.db
+          .prepare("INSERT INTO evidence_audits VALUES(?,?,?)")
+          .run(id, owner, JSON.stringify(evidence));
+        for (const claim of evidence.claims)
+          this.db
+            .prepare("INSERT INTO claim_support VALUES(?,?,?,?)")
+            .run(claim.id, id, owner, JSON.stringify(claim));
+        for (const comparison of evidence.comparisons)
+          this.db
+            .prepare("INSERT INTO comparisons VALUES(?,?,?,?)")
+            .run(comparison.id, id, owner, JSON.stringify(comparison));
+      }
       if (status === "completed") this.schedule(owner);
       return this.messages(owner, run.conversationId).find((m) => m.id === id)!;
     })();
@@ -391,15 +444,58 @@ export class Store {
       created_at: string;
       version: number;
     }[];
-    return rows.map((r) => ({
-      id: r.id,
-      kind: r.kind,
-      text: r.content,
-      sources: JSON.parse(r.sources),
-      validUntil: r.valid_until,
-      createdAt: r.created_at,
-      version: r.version,
-    }));
+    return rows
+      .map((r) => ({
+        id: r.id,
+        kind: r.kind,
+        text: r.content,
+        sources: JSON.parse(r.sources),
+        validUntil: r.valid_until,
+        createdAt: r.created_at,
+        version: r.version,
+      }))
+      .concat(
+        (
+          this.db
+            .prepare("SELECT * FROM memory_overrides WHERE owner=?")
+            .all(owner) as {
+            id: string;
+            kind: string;
+            content: string;
+            sources: string;
+            created_at: string;
+            version: number;
+          }[]
+        ).map((r) => ({
+          id: r.id,
+          kind: r.kind,
+          text: r.content,
+          sources: JSON.parse(r.sources),
+          validUntil: null,
+          createdAt: r.created_at,
+          version: r.version,
+          userEdited: true,
+        })),
+      );
+  }
+  editMemory(owner: string, id: string, text: string) {
+    return this.db.transaction(() => {
+      const memory = this.memories(owner).find((m) => m.id === id);
+      if (!memory) throw new Error("Memory not found");
+      this.forget(owner, id);
+      this.db
+        .prepare("INSERT INTO memory_overrides VALUES(?,?,?,?,?,?,?)")
+        .run(
+          id,
+          owner,
+          memory.kind,
+          text,
+          JSON.stringify(memory.sources),
+          now(),
+          memory.version + 1,
+        );
+      return this.memories(owner).find((m) => m.id === id)!;
+    })();
   }
   forget(owner: string, id: string) {
     this.db.transaction(() => {
@@ -408,11 +504,20 @@ export class Store {
           "SELECT content,sources FROM memories WHERE owner=? AND id=? AND active=1",
         )
         .get(owner, id) as { content: string; sources: string } | undefined;
-      if (!row) throw new Error("Memory not found");
+      const override = this.db
+        .prepare(
+          "SELECT content,sources FROM memory_overrides WHERE owner=? AND id=?",
+        )
+        .get(owner, id) as { content: string; sources: string } | undefined;
+      const target = override ?? row;
+      if (!target) throw new Error("Memory not found");
+      this.db
+        .prepare("DELETE FROM memory_overrides WHERE owner=? AND id=?")
+        .run(owner, id);
       this.db
         .prepare("INSERT OR IGNORE INTO forgotten VALUES(?,?,?)")
-        .run(owner, row.content.toLowerCase().trim(), now());
-      for (const source of JSON.parse(row.sources) as Memory["sources"])
+        .run(owner, memoryFingerprint(target.content), now());
+      for (const source of JSON.parse(target.sources) as Memory["sources"])
         this.db
           .prepare("INSERT OR IGNORE INTO memory_exclusions VALUES(?,?)")
           .run(owner, source.messageId);
@@ -431,7 +536,149 @@ export class Store {
           "UPDATE owners SET revision=revision+1,memory_revision=memory_revision+1 WHERE id=?",
         )
         .run(owner);
+      this.db
+        .prepare("INSERT OR IGNORE INTO cache_cleanup VALUES(?)")
+        .run(owner);
+      this.db
+        .prepare(
+          "UPDATE runs SET status='interrupted',finished_at=? WHERE owner=? AND status='running'",
+        )
+        .run(now(), owner);
       this.schedule(owner, true);
+    })();
+  }
+  // Mutations fence every owner run because it may have read the changed message across threads.
+  private invalidateData(owner: string, ids: string[]) {
+    for (const id of ids) {
+      queueVectorCleanup(this.db, owner, id);
+      for (const table of ["memories", "memory_overrides"]) {
+        const rows = this.db
+          .prepare(`SELECT id,sources FROM ${table} WHERE owner=?`)
+          .all(owner) as { id: string; sources: string }[];
+        for (const row of rows)
+          if (
+            (JSON.parse(row.sources) as Memory["sources"]).some(
+              (s) => s.messageId === id,
+            )
+          )
+            this.db
+              .prepare(`DELETE FROM ${table} WHERE owner=? AND id=?`)
+              .run(owner, row.id);
+      }
+      this.db
+        .prepare("DELETE FROM memory_exclusions WHERE owner=? AND message_id=?")
+        .run(owner, id);
+      this.db
+        .prepare("DELETE FROM events WHERE owner=? AND message_id=?")
+        .run(owner, id);
+      this.db
+        .prepare(
+          "INSERT INTO events(owner,kind,message_id,created_at) VALUES(?,?,?,?)",
+        )
+        .run(owner, "transcript_changed", id, now());
+    }
+    this.db
+      .prepare(
+        "UPDATE runs SET status='interrupted',finished_at=?,trace='[]',metrics='{}',error='Conversation data changed' WHERE owner=? AND status='running'",
+      )
+      .run(now(), owner);
+    // Clear artifacts that may contain a copied baseline from any of this owner's threads.
+    this.db.prepare("DELETE FROM search_passes WHERE owner=?").run(owner);
+    // Audits may quote the modified baseline across conversations.
+    for (const table of ["evidence_audits", "claim_support", "comparisons"])
+      this.db.prepare(`DELETE FROM ${table} WHERE owner=?`).run(owner);
+    this.db.prepare("DELETE FROM search_lookups WHERE owner=?").run(owner);
+    this.db.prepare("INSERT OR IGNORE INTO cache_cleanup VALUES(?)").run(owner);
+    this.db
+      .prepare(
+        "UPDATE owners SET revision=revision+1,memory_revision=memory_revision+1 WHERE id=?",
+      )
+      .run(owner);
+    this.schedule(owner, true);
+  }
+  editMessage(owner: string, id: string, content: string) {
+    return this.db.transaction(() => {
+      const message = this.message(owner, id);
+      if (!message) throw new Error("Message not found");
+      this.invalidateData(owner, [id]);
+      this.db
+        .prepare(
+          "UPDATE messages SET content=?,citations='[]',sources='[]' WHERE owner=? AND id=?",
+        )
+        .run(content, owner, id);
+      this.db
+        .prepare(
+          "UPDATE semantic_jobs SET state='pending',token=NULL,lease_until=NULL,attempts=0,due_at=0,generation=? WHERE owner=? AND message_id=?",
+        )
+        .run(randomUUID(), owner, id);
+      this.db
+        .prepare(
+          "UPDATE runs SET trace='[]',metrics='{}',error=NULL WHERE owner=? AND id=?",
+        )
+        .run(owner, message.runId);
+      this.db
+        .prepare(
+          "UPDATE conversations SET title=CASE WHEN ?='user' AND ?=(SELECT id FROM messages WHERE conversation_id=? AND role='user' ORDER BY created_at,rowid LIMIT 1) THEN ? ELSE title END,updated_at=? WHERE owner=? AND id=?",
+        )
+        .run(
+          message.role,
+          id,
+          message.conversationId,
+          content.slice(0, 70),
+          now(),
+          owner,
+          message.conversationId,
+        );
+      return this.message(owner, id)!;
+    })();
+  }
+  deleteMessage(owner: string, id: string) {
+    this.db.transaction(() => {
+      const message = this.message(owner, id);
+      if (!message) throw new Error("Message not found");
+      this.invalidateData(owner, [id]);
+      this.db
+        .prepare("DELETE FROM events WHERE owner=? AND message_id=?")
+        .run(owner, id);
+      this.db
+        .prepare("DELETE FROM messages WHERE owner=? AND id=?")
+        .run(owner, id);
+      this.db
+        .prepare(
+          "DELETE FROM runs WHERE owner=? AND id=? AND NOT EXISTS(SELECT 1 FROM messages WHERE run_id=?)",
+        )
+        .run(owner, message.runId, message.runId);
+      this.db
+        .prepare(
+          "UPDATE runs SET trace='[]',metrics='{}',error=NULL WHERE owner=? AND id=?",
+        )
+        .run(owner, message.runId);
+      this.db
+        .prepare(
+          "UPDATE conversations SET title=COALESCE((SELECT substr(content,1,70) FROM messages WHERE conversation_id=? AND role='user' ORDER BY created_at,rowid LIMIT 1),'A new thread'),updated_at=? WHERE owner=? AND id=?",
+        )
+        .run(message.conversationId, now(), owner, message.conversationId);
+    })();
+  }
+  deleteConversation(owner: string, id: string) {
+    this.db.transaction(() => {
+      if (!this.conversation(owner, id))
+        throw new Error("Conversation not found");
+      const ids = this.messages(owner, id).map((m) => m.id);
+      this.invalidateData(owner, ids);
+      for (const messageId of ids)
+        this.db
+          .prepare("DELETE FROM events WHERE owner=? AND message_id=?")
+          .run(owner, messageId);
+      this.db
+        .prepare("DELETE FROM messages WHERE owner=? AND conversation_id=?")
+        .run(owner, id);
+      this.db
+        .prepare("DELETE FROM runs WHERE owner=? AND conversation_id=?")
+        .run(owner, id);
+      this.db
+        .prepare("DELETE FROM conversations WHERE owner=? AND id=?")
+        .run(owner, id);
     })();
   }
   claimJob(): Job | null {
@@ -495,7 +742,7 @@ export class Store {
       const excluded = new Set(this.excluded(job.owner));
       const valid = entries.filter(
         (e) =>
-          !forgotten.includes(e.text.toLowerCase().trim()) &&
+          !forgotten.includes(memoryFingerprint(e.text)) &&
           e.sources.length > 0 &&
           e.sources.every((s) => {
             const m = this.db
@@ -698,11 +945,11 @@ export function getStore() {
   if (
     !scope.minimiStore ||
     !(scope.minimiStore instanceof Store) ||
-    scope.minimiStoreVersion !== 3
+    scope.minimiStoreVersion !== 4
   ) {
     scope.minimiStore?.close();
     scope.minimiStore = new Store(settings.database);
-    scope.minimiStoreVersion = 3;
+    scope.minimiStoreVersion = 4;
   }
   return scope.minimiStore;
 }

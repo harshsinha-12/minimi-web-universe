@@ -1,6 +1,6 @@
 # Verification record
 
-Recorded November 11, 2026. This is a local engineering check, not a leaderboard result or proof of parity with leading chatbots.
+Updated November 12, 2026; older checkpoints below retain their original results. This is a local engineering check, not a leaderboard result or proof of parity with leading chatbots.
 
 ## Automated coverage
 
@@ -13,7 +13,7 @@ The regression suite exercises the production store, date resolver, context buil
 - Explicit no-search requests, fragmented UTF-8/SSE, truncated streams, citation offsets, and incomplete provider responses.
 - Browser same-origin checks when the public host differs from Next's internal request URL.
 
-The final verification pass completed **46 tests**, `npm run typecheck`, and `npm run build` successfully. Dependency auditing reported zero known vulnerabilities after upgrading the test runner. These checks do not substitute for the broader quality benchmark below.
+The initial November 11 verification pass completed **46 tests**, `npm run typecheck`, and `npm run build` successfully. Dependency auditing reported zero known vulnerabilities after upgrading the test runner. These checks do not substitute for the broader quality benchmark below.
 
 ## Live checks actually run
 
@@ -36,9 +36,9 @@ Desktop visual inspection confirmed the cream/lavender layout and serif headings
 
 ## Boundaries and remaining evaluation
 
-These are smoke tests, not an independently annotated quality benchmark. Citation presence is measured; semantic entailment of every claim is not automatically proven. The conditional reviewer sees returned artifacts, not hidden raw search pages. Structured comparison classifications are currently instructions to the model, not a separate verified fact database.
+These are smoke tests, not an independently annotated quality benchmark. Citation presence is measured; semantic entailment of every claim is not automatically proven. The conditional coverage reviewer sees returned artifacts, not hidden raw search pages. The newer independent page-support review fetches bounded visible text, checks exact answer/evidence spans, and persists claim-support/comparison records; its semantic verdicts and factual extraction remain fallible model judgements.
 
-Memory support checks establish exact span ownership and revision validity, not that every interpretation of a span is correct. Corrections accompany older memories as raw context while consolidation catches up. Forgetting derived memory excludes its supporting messages from future synthesis and retains original transcripts; full transcript deletion is not yet exposed.
+Memory support checks establish exact span ownership and revision validity, not that every interpretation of a span is correct. Corrections accompany older memories as raw context while consolidation catches up. Forgetting derived memory excludes its supporting messages from future synthesis and retains original transcripts; message/conversation deletion and direct memory editing are now exposed, with transactional dependent-data invalidation and durable provider cleanup.
 
 No controlled memory ablation, adversarial web-page campaign, load test, crash-injection campaign, cost benchmark, or private minimi evaluation has been completed. The larger evaluation framework and detailed logical schemas in the plan remain targets beyond this working implementation.
 
@@ -49,3 +49,15 @@ Post-refactor and source-preview checks: **83 deterministic tests passed**, Type
 The first judge calibration run produced 13 scored agreements and one invalid/unscored verdict across 14 synthetic candidates. A targeted rerun of both billing-unit candidates passed. This is calibration on authored examples, not independent accuracy measurement. The first production-agent evaluation exposed missing non-keyword preference retrieval; after fixing retrieval and supplying original IDs to the judge, the four production history fixtures all passed in the latest run. These are ordered shortlist, missing history, explicit preference correction and planned-vs-completed events.
 
 Pinecone has no configured key/host and is disabled; only its adapter contracts/job lifecycle have been tested locally. A live Wispr Flow Open Graph metadata fetch and 154177-byte JPEG image proxy fetch passed. The new cards still need owned-endpoint access tests and browser QA. No new browser verification or deployment is claimed. Current npm audit reports moderate findings in development lint tooling rooted in minimatch; the earlier zero-findings statement predates that tooling. Do not apply a breaking audit downgrade automatically.
+
+## November 12 implementation-gap checkpoint
+
+The suite now includes calendar-week/relative-offset/inclusive-range retrieval, cross-thread endpoint inclusion, invalid ranges, timezone fallback and DST; transcript edit/delete ownership, FTS/title updates, rollback and stale-worker fencing; persistent manual memory corrections; durable provider cleanup retries, in-flight writes and distinct vector generations when text is restored; exact claim/citation/page-quote validation, missing coverage, pricing-dimension mismatches, historical corrections, audit persistence and malformed-output failure handling.
+
+The existing 117 tests passed before the additions. The final expanded suite passed **188 tests**; lint, typecheck and the production build also passed. Live `npx tsx scripts/live-evidence-smoke.ts --live` exercised the production audit helper and configured OpenAI review model against two synthetic captured pages: the correct annual-billing claim was supported (4.4 s), and substituting monthly billing was contradicted (2.3 s). These are two authored smoke fixtures, not a held-out accuracy measurement. A separate production HTTP/SSE turn used hosted web search on official PostgreSQL documentation and completed with three streamed deltas, one native citation, a supported independent page audit, and matching persisted evidence (9.9 s). This live check exposed Markdown-span and UTM-link identity issues that now have regression coverage. It is one end-to-end smoke check, not a research benchmark.
+
+Production HTTP checks on port 3107 used a separate temporary SQLite database and separate session cookies. They passed message PATCH/DELETE, conversation DELETE, memory PATCH, cross-owner 404s, cross-origin 403s, invalid-text 400s, dependency retraction and deleted-record 404s. No real user's transcripts were modified. The browser bridge could open a tab but failed to render/read the local page; no browser or responsive interaction sign-off is claimed. Pinecone cleanup was tested with a fake provider, including outage and write/deletion races; it has not been verified against live Pinecone. No deployment or submission was performed.
+
+### Memory-agent follow-up
+
+`agent__memory.ts` now requests schema-constrained output, excludes assistant/incomplete records and manual overrides at the provider boundary, retains exact supporting quotes for automatic previous memories, and rejects proposals citing absent sources or fabricated quotes before returning. The unused forgotten-fingerprint/count argument was removed; SQL source exclusions, hashed tombstones and revision fencing remain the authority. Ten direct helper tests cover these cases, malformed/incomplete output and empty replacement sets. A live synthetic preference through `synthesize()` returned one supported memory in 2.6 seconds without writing user history. The final 188-test suite, typecheck, lint and production build passed.

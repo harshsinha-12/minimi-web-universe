@@ -62,3 +62,26 @@ export async function closeRedis() {
   client?.destroy();
   client = null;
 }
+
+// Revisioned keys become unreadable immediately. A durable SQL request also removes cached text.
+export async function cleanupContextCache(
+  store: import("../db/store").Store,
+  owner: string,
+) {
+  const c = await redis();
+  if (!c) {
+    if (!process.env.REDIS_HOST)
+      store.db.prepare("DELETE FROM cache_cleanup WHERE owner=?").run(owner);
+    return;
+  }
+  try {
+    for await (const keys of c.scanIterator({
+      MATCH: `minimi:context:*:${owner}:*`,
+      COUNT: 100,
+    }))
+      if (keys.length) await c.del(keys);
+    store.db.prepare("DELETE FROM cache_cleanup WHERE owner=?").run(owner);
+  } catch {
+    /* Worker retries; old keys also expire within five minutes. */
+  }
+}

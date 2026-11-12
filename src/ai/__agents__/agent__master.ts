@@ -1,3 +1,5 @@
+import { auditAnswer, emptyAudit } from "../claim-audit";
+import type { EvidenceAudit } from "../claim-audit";
 import { SYSTEM } from "../__prompts__/prompt__answer";
 import { webSearchTools } from "../__tools__/tool__web_search";
 import { isContextDependent, turnSearchMode } from "../search-cache";
@@ -99,6 +101,7 @@ export async function runAgent(args: {
       memories: context.memories.map((m) => ({
         kind: m.kind,
         text: m.text,
+        userEdited: m.userEdited ?? false,
         sourceMessageIds: m.sources.map((s) => s.messageId),
         recordedAt: m.createdAt,
         validUntil: m.validUntil,
@@ -110,6 +113,13 @@ export async function runAgent(args: {
         text: m.content,
         sentAt: m.createdAt,
         citations: m.citations.slice(0, 12),
+        evidence: m.evidence
+          ? {
+              claims: m.evidence.claims,
+              comparisons: m.evidence.comparisons,
+              checkedAt: m.evidence.checkedAt,
+            }
+          : undefined,
       })),
     });
     let input: ResponseInput = [
@@ -244,6 +254,49 @@ export async function runAgent(args: {
     if (fresh && result.citations.length === 0 && result.actions.length > 0)
       result.text +=
         "\n\nI could not attach verifiable inline citations to this check; treat the external facts above as unverified.";
+    let evidence: EvidenceAudit | undefined;
+    if (result.citations.length || result.sources.length || totalActions > 0) {
+      stage("checking", "Checking answer claims against the cited pages");
+      const remaining = Math.max(
+        0,
+        settings.deadline - (Date.now() - started) - 1000,
+      );
+      const checked =
+        remaining < 1000
+          ? { audit: emptyAudit(), usage: null }
+          : await auditAnswer({
+              client,
+              answer: result.text,
+              citations: result.citations,
+              sources: result.sources,
+              baseline: context.messages.filter((m) => m.role === "assistant"),
+              compare: recheck,
+              signal: AbortSignal.any([
+                signal,
+                AbortSignal.timeout(Math.min(18000, remaining)),
+              ]),
+            });
+      evidence = checked.audit;
+      totalInput += checked.usage?.input_tokens ?? 0;
+      totalOutput += checked.usage?.output_tokens ?? 0;
+      if (evidence.status === "unavailable")
+        result.text +=
+          "\n\nPage support check unavailable: the external claims above have not been independently verified.";
+      else if (evidence.claims.some((c) => c.status !== "supported"))
+        result.text +=
+          "\n\nPage support check: some claims above lack support or conflict with the fetched pages. Treat those claims as unverified; see the evidence details.";
+      const uncertain = [
+        ...new Set(
+          evidence.comparisons
+            .filter(
+              (c) => c.status === "unverified" || c.status === "not_comparable",
+            )
+            .map((c) => c.subject),
+        ),
+      ];
+      if (uncertain.length)
+        result.text += `\n\nA historical change could not be verified for: ${uncertain.join(", ")}.`;
+    }
     const metrics = {
       model: settings.model,
       inputTokens: totalInput,
@@ -257,24 +310,17 @@ export async function runAgent(args: {
       memoryEntries: context.memories.length,
       semanticHits: context.semanticHits,
       responseId: response?.id,
+      claimAudit: evidence
+        ? {
+            status: evidence.status,
+            claims: evidence.claims.length,
+            supported: evidence.claims.filter((c) => c.status === "supported")
+              .length,
+          }
+        : undefined,
       ...(prepared.detail ? { searchCache: prepared.detail } : {}),
     };
-    if (policy.allow && result.sources.length)
-      void rememberSearch(
-        store,
-        owner,
-        conversationId,
-        question,
-        result.sources,
-        {
-          touchLookup: !reuse && !isContextDependent(question),
-        },
-      ).catch((error) =>
-        logger.warn(
-          { component: "search-cache", err: error },
-          "could not save source pages",
-        ),
-      );
+    signal.throwIfAborted();
     const message = store.finish(
       owner,
       runId,
@@ -283,7 +329,27 @@ export async function runAgent(args: {
       result.sources,
       trace,
       metrics,
+      "completed",
+      null,
+      evidence,
     );
+    if (message && policy.allow && result.sources.length)
+      void rememberSearch(
+        store,
+        owner,
+        conversationId,
+        question,
+        result.sources,
+        {
+          touchLookup: !reuse && !isContextDependent(question),
+          revision: store.owner(owner).revision,
+        },
+      ).catch((error) =>
+        logger.warn(
+          { component: "search-cache", err: error },
+          "could not save source pages",
+        ),
+      );
     if (message) emit({ type: "done", message, metrics, trace, runId });
   } catch (e) {
     const interrupted = args.signal.aborted;

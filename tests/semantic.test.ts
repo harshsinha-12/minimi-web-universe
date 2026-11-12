@@ -92,6 +92,7 @@ describe("semantic memory boundaries", () => {
     const { store, message, jobs } = setup();
     const writes: unknown[] = [];
     const index: VectorIndex = {
+      delete: async () => {},
       upsert: async (namespace, records) => {
         writes.push({ namespace, records });
       },
@@ -108,7 +109,7 @@ describe("semantic memory boundaries", () => {
         namespace: semanticNamespace("alice"),
         records: [
           {
-            id: message.id + ":0",
+            id: `${message.id}:${(store.db.prepare("SELECT generation FROM semantic_jobs WHERE message_id=?").get(message.id) as { generation: string }).generation}:0`,
             values: [0.1, 0.2],
             metadata: {
               messageId: message.id,
@@ -123,6 +124,7 @@ describe("semantic memory boundaries", () => {
   it("preserves a retryable outbox entry after provider failure", async () => {
     const { store } = setup();
     const index: VectorIndex = {
+      delete: async () => {},
       upsert: async () => {
         throw new Error("outage");
       },

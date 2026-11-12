@@ -107,18 +107,39 @@ export async function indexNextMessage(
     }
     const signal = AbortSignal.timeout(45000);
     const { vectors, tokens } = await embed(chunks, signal);
-    await index.upsert(
-      semanticNamespace(job.owner),
-      vectors.map((values, i) => ({
-        id: `${message.id}:${i}`,
-        values,
-        metadata: {
-          messageId: message.id,
-          fingerprint: fingerprint(message.content),
-        },
-      })),
-      signal,
-    );
+    const namespace = semanticNamespace(job.owner);
+    const records = vectors.map((values, i) => ({
+      id: `${message.id}:${job.generation}:${i}`,
+      values,
+      metadata: {
+        messageId: message.id,
+        fingerprint: fingerprint(message.content),
+      },
+    }));
+    // Persist provider-write intent before network I/O, so deletion can recover even after a crash.
+    const permitted = store.db.transaction(() => {
+      const lease = store.db
+        .prepare("SELECT token FROM semantic_jobs WHERE message_id=?")
+        .get(job.messageId) as { token: string } | undefined;
+      if (
+        lease?.token !== job.token ||
+        store.message(job.owner, job.messageId)?.content !== message.content
+      )
+        return false;
+      for (const record of records)
+        store.db
+          .prepare("INSERT OR IGNORE INTO vector_records VALUES(?,?,?,?,?)")
+          .run(
+            job.owner,
+            message.id,
+            settings.pineconeHost,
+            namespace,
+            record.id,
+          );
+      return true;
+    })();
+    if (!permitted) return { indexed: false, tokens };
+    await index.upsert(namespace, records, signal);
     const committed = jobs.complete(job);
     return { indexed: committed, tokens };
   } catch {
