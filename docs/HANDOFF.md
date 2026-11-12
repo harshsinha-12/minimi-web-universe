@@ -25,12 +25,14 @@ Local checkout: `/Users/harshsinha/VS Code/minimi-web-universe`. Reference only:
 - `npm run dev`: `scripts/dev.mjs` starts Next and the background memory worker.
 - Default answer model `gpt-6-astra`; memory/review/judge default `gpt-5.4-mini`. `.env.example` documents overrides.
 - `src/ai/__agents__/agent__master.ts`: bounded Responses API loop, streamed ordinary answers, held/reviewed historical rechecks, native citations, returned search artifacts, status and usage. Three maximum research passes, 90-second default deadline. Uses existing Responses implementation; do not migrate APIs merely for a refactor.
+- `src/ai/claim-audit.ts`: independent tool-free structured review against bounded fetched page snapshots; exact answer/quote/native-citation checks, persisted support records and deterministic compatible-price comparisons. See [data and evidence controls](DATA_AND_EVIDENCE.md).
 - `agent__research_review.ts`: conditional tool-free coverage review, distinct from offline eval.
 - `agent__memory.ts`: tool-free synthesis with exact quoted user-message sources, schema in `src/memory/schema.ts`.
 - `agent__judge.ts`: offline structured verdicts on recall, temporal reasoning, grounding and usefulness. Explicit critical violations veto an overall pass. Exact candidate quotes and valid evidence IDs are checked.
 - `src/db/store.ts`: owner-scoped original messages, conversations/runs/events, FTS5, provider artifacts, memory versions/outbox, leases/revisions/source exclusions. Database defaults `.data/minimi.sqlite`. Redis is a five-minute derived-context cache and wake-up mechanism.
 - `src/ai/context.ts`: exact timezone intervals, FTS5, recent messages, source-linked memories, optional semantic retrieval, reciprocal rank fusion and original-exchange hydration. Fixed missing non-keyword preference recall during live evaluation.
 - `src/memory/index-jobs.ts`: transactional SQL trigger enqueues completed messages. Claims/retries/fenced leases persist; index configuration changes reindex finished jobs.
+- `src/memory/vector-cleanup.ts`: persisted write manifests, legacy-ID migration and retryable deletion outbox; per-edit vector generations avoid deleting restored text. Cache cleanup also polls independently of automatic memory synthesis.
 - `src/memory/semantic.ts`: bounded overlapping Unicode chunks; embeddings via existing OpenAI key; Pinecone BYOV index, opaque owner namespaces; store only IDs/fingerprints as vector metadata; hydrate matches from authoritative SQL and reject stale/foreign/excluded sources. Query failures fall back to lexical/date context.
 - `src/ai/__tools__/tool__web_search.ts`: complete model-facing tool list. Embeddings/Pinecone adapters in this folder are not offered to the model.
 - `src/server/logger.ts` and logging changes were added concurrently in the workspace. Preserve them. Pino, lint/format/Husky config also exist.
@@ -73,7 +75,7 @@ Dependency audit currently reports 10 moderate development-tool findings rooted 
 
 SQLite is authoritative today. Works on one host with a persistent volume shared by app/worker. Serverless/multi-host deployment needs a managed Postgres migration; Pinecone and Redis do not replace canonical SQL. No migration or deployment performed.
 
-Next priorities are in `plan.md` section 16: finish preview QA and refactor verification; expand human-reviewed quality data and judge calibration; live-test Pinecone after keys arrive; compare memory/semantic ablations; choose deployment and migrate SQL if necessary; package/review for public submission. Full transcript deletion, account recovery/auth, semantic citation entailment, a normalized comparison-fact database, load/crash campaigns and a held-out research benchmark remain incomplete.
+Next priorities are in `plan.md` section 16: finish preview QA and refactor verification; expand human-reviewed quality data and judge calibration; live-test Pinecone after keys arrive; compare memory/semantic ablations; choose deployment and migrate SQL if necessary; package/review for public submission. Message/conversation edit/delete, direct memory editing, bounded page-support review and structured comparison records are implemented. Account recovery/auth, live Pinecone verification, browser/responsive sign-off, load/crash campaigns and a held-out research benchmark remain incomplete. Audit verdicts remain model judgements rather than independent human labels.
 
 Stop task-owned development services when finished. Do not stop unrelated user processes. Browser automation was unreliable in prior local work; the previous desktop UI was visually inspected, but the newest cards need their own QA.
 

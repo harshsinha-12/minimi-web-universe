@@ -1,3 +1,4 @@
+import type { EvidenceAudit } from "./ai/claim-audit";
 export type Citation = {
   url: string;
   title: string;
@@ -16,6 +17,7 @@ export type Message = {
   citations: Citation[];
   sources: Source[];
   runId: string | null;
+  evidence?: EvidenceAudit;
 };
 export type Conversation = {
   id: string;
@@ -31,6 +33,7 @@ export type Memory = {
   validUntil: string | null;
   createdAt: string;
   version: number;
+  userEdited?: boolean;
 };
 export type Run = {
   id: string;

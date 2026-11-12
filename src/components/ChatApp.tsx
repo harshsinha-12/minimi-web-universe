@@ -21,6 +21,7 @@ import {
   MessageCircle,
   PanelLeftClose,
   Plus,
+  Pencil,
   Search,
   Sparkles,
   Square,
@@ -40,6 +41,7 @@ import { formatAnswer } from "./chat-export";
 import { ChatActions } from "./ChatActions";
 import { SourcePills, SourcesSidebar } from "./SourcePills";
 import { ThoughtTrace } from "./ThoughtTrace";
+import { EvidenceDetails } from "./EvidenceDetails";
 import { VoiceInput } from "./VoiceInput";
 
 type Bootstrap = {
@@ -107,6 +109,12 @@ export default function ChatApp() {
   const [traces, setTraces] = useState<
     Record<string, { trace: Trace[]; metrics: Record<string, unknown> }>
   >({});
+  const [editing, setEditing] = useState<{
+    kind: "message" | "memory";
+    id: string;
+    text: string;
+  } | null>(null);
+  const [mutating, setMutating] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const abort = useRef<AbortController | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
@@ -117,9 +125,10 @@ export default function ChatApp() {
     return data;
   };
   const openThread = async (id: string) => {
-    if (busy) return;
+    if (busy || mutating) return;
     setError(null);
     setPanel(null);
+    setEditing(null);
     setThread(id);
     const data = await json<{ messages: Message[] }>(
       `/api/conversations/${id}`,
@@ -153,9 +162,10 @@ export default function ChatApp() {
     return () => clearInterval(timer);
   }, [panel]);
   const newThread = useCallback(() => {
-    if (busy) return;
+    if (busy || mutating) return;
     setThread(null);
     setMessages([]);
+    setEditing(null);
     setPanel(null);
     setSourceMessageId(null);
     setText("");
@@ -163,7 +173,7 @@ export default function ChatApp() {
     window.history.replaceState(null, "", "/");
     input.current?.focus();
     if (window.innerWidth < 800) setSidebar(false);
-  }, [busy]);
+  }, [busy, mutating]);
   useEffect(() => {
     const listener = (e: KeyboardEvent) => {
       if (isNewConversationShortcut(e)) {
@@ -180,7 +190,7 @@ export default function ChatApp() {
   }, [newThread]);
   async function send(event?: FormEvent) {
     event?.preventDefault();
-    if (!text.trim() || busy || !boot) return;
+    if (!text.trim() || busy || mutating || !boot) return;
     const question = text.trim();
     setText("");
     setError(null);
@@ -347,6 +357,69 @@ export default function ChatApp() {
         : { ...old, [message.id]: { trace: run.trace, metrics: run.metrics } },
     );
   }
+  async function saveEdit() {
+    if (!editing || mutating || busy) return;
+    setMutating(true);
+    try {
+      await json(
+        editing.kind === "message"
+          ? `/api/messages/${editing.id}`
+          : "/api/memory",
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            editing.kind === "message"
+              ? { content: editing.text }
+              : { id: editing.id, text: editing.text },
+          ),
+        },
+      );
+      setEditing(null);
+      setTraces({});
+      if (thread)
+        setMessages(
+          (await json<{ messages: Message[] }>(`/api/conversations/${thread}`))
+            .messages,
+        );
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not save changes");
+    } finally {
+      setMutating(false);
+    }
+  }
+  async function removeData(kind: "message" | "conversation", id: string) {
+    if (busy || mutating) return;
+    if (
+      !window.confirm(
+        kind === "conversation"
+          ? "Delete this conversation and its derived memories? This cannot be undone."
+          : "Delete this message and its derived memories? This cannot be undone.",
+      )
+    )
+      return;
+    setMutating(true);
+    try {
+      await json(
+        `/api/${kind === "message" ? "messages" : "conversations"}/${id}`,
+        { method: "DELETE" },
+      );
+      setSourceMessageId(null);
+      setTraces({});
+      if (kind === "conversation" && id === thread) newThread();
+      else if (thread)
+        setMessages(
+          (await json<{ messages: Message[] }>(`/api/conversations/${thread}`))
+            .messages,
+        );
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not delete data");
+    } finally {
+      setMutating(false);
+    }
+  }
   const count = boot?.conversations.length ?? 0;
   const currentTitle = boot?.conversations.find((c) => c.id === thread)?.title;
   const sourceMessage =
@@ -423,17 +496,27 @@ export default function ChatApp() {
           {boot?.conversations
             .filter((c) => c.title.toLowerCase().includes(filter.toLowerCase()))
             .map((c) => (
-              <button
-                className={`thread ${thread === c.id ? "selected" : ""}`}
-                disabled={busy}
-                onClick={() =>
-                  void openThread(c.id).catch((e) => setError(e.message))
-                }
-                key={c.id}
-              >
-                <MessageCircle size={14} />
-                <span>{c.title}</span>
-              </button>
+              <div className="thread-row" key={c.id}>
+                <button
+                  className={`thread ${thread === c.id ? "selected" : ""}`}
+                  disabled={busy}
+                  onClick={() =>
+                    void openThread(c.id).catch((e) => setError(e.message))
+                  }
+                  key={c.id}
+                >
+                  <MessageCircle size={14} />
+                  <span>{c.title}</span>
+                </button>
+                <button
+                  className="icon-btn"
+                  disabled={busy || mutating}
+                  aria-label={`Delete conversation: ${c.title}`}
+                  onClick={() => void removeData("conversation", c.id)}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
             ))}
           {count === 0 && (
             <div className="history-empty">
@@ -503,6 +586,56 @@ export default function ChatApp() {
             <ChevronRight size={12} />
           </button>
         </header>
+        {error && panel && (
+          <div className="error-banner" role="alert">
+            {error}
+            <button
+              className="icon-btn"
+              aria-label="Dismiss error"
+              onClick={() => setError(null)}
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
+        {editing && (
+          <section
+            className="edit-panel"
+            aria-label={
+              editing.kind === "message" ? "Edit message" : "Edit memory"
+            }
+          >
+            <label htmlFor="edit-content">Edit {editing.kind}</label>
+            <textarea
+              id="edit-content"
+              value={editing.text}
+              maxLength={12000}
+              onChange={(e) => setEditing({ ...editing, text: e.target.value })}
+              rows={5}
+            />
+            {editing.kind === "message" && (
+              <p className="muted">
+                Saving updates this message. Existing replies stay as written.
+              </p>
+            )}
+            <div>
+              <button
+                className="text-btn"
+                disabled={busy || mutating || !editing.text.trim()}
+                onClick={() => void saveEdit()}
+              >
+                Save changes
+              </button>
+              <button
+                className="text-btn"
+                disabled={mutating}
+                onClick={() => setEditing(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          </section>
+        )}
         {panel ? (
           <section className="settings-panel">
             <button className="back-link" onClick={() => setPanel(null)}>
@@ -543,7 +676,10 @@ export default function ChatApp() {
                       <article className="memory-entry" key={m.id}>
                         <div className="memory-kind">
                           {m.kind.replaceAll("_", " ")}
-                          <span>v{m.version}</span>
+                          <span>
+                            v{m.version}
+                            {m.userEdited ? " · edited by you" : ""}
+                          </span>
                         </div>
                         <p>{m.text}</p>
                         <div className="memory-entry-footer">
@@ -554,15 +690,40 @@ export default function ChatApp() {
                           </span>
                           <button
                             className="icon-btn"
+                            disabled={busy || mutating}
+                            aria-label={`Edit memory: ${m.text.slice(0, 35)}`}
+                            onClick={() =>
+                              setEditing({
+                                kind: "memory",
+                                id: m.id,
+                                text: m.text,
+                              })
+                            }
+                          >
+                            <Pencil size={15} />
+                          </button>
+                          <button
+                            disabled={busy || mutating}
+                            className="icon-btn"
                             aria-label={`Forget memory: ${m.text.slice(0, 35)}`}
                             title="Forget derived memory; original conversation stays"
                             onClick={async () => {
-                              await json("/api/memory", {
-                                method: "DELETE",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ id: m.id }),
-                              });
-                              await refresh();
+                              try {
+                                await json("/api/memory", {
+                                  method: "DELETE",
+                                  headers: {
+                                    "Content-Type": "application/json",
+                                  },
+                                  body: JSON.stringify({ id: m.id }),
+                                });
+                                await refresh();
+                              } catch (e) {
+                                setError(
+                                  e instanceof Error
+                                    ? e.message
+                                    : "Could not forget memory",
+                                );
+                              }
                             }}
                           >
                             <Trash2 size={15} />
@@ -739,6 +900,33 @@ export default function ChatApp() {
                           </div>
                         )}
                       </div>
+                      {m.status !== "running" && (
+                        <div className="message-edit-actions">
+                          <button
+                            className="icon-btn"
+                            disabled={busy || mutating}
+                            aria-label={`Edit ${m.role} message`}
+                            onClick={() =>
+                              setEditing({
+                                kind: "message",
+                                id: m.id,
+                                text: m.content,
+                              })
+                            }
+                          >
+                            <Pencil size={14} />
+                          </button>
+                          <button
+                            className="icon-btn"
+                            disabled={busy || mutating}
+                            aria-label={`Delete ${m.role} message`}
+                            onClick={() => void removeData("message", m.id)}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      )}
+                      {m.evidence && <EvidenceDetails audit={m.evidence} />}
                       {m.role === "assistant" && m.status !== "running" && (
                         <>
                           <div className="message-actions">

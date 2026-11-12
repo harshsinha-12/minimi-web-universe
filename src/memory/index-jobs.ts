@@ -1,13 +1,19 @@
 import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
+import {
+  initializeVectorCleanup,
+  migrateLegacyVectors,
+} from "./vector-cleanup";
 
 export type IndexJob = {
   owner: string;
   messageId: string;
   token: string;
   indexKey: string;
+  generation: string;
 };
 export function initializeSemanticJobs(db: Database.Database) {
+  initializeVectorCleanup(db);
   // The insert trigger commits the outbox entry in the same transaction as the message.
   const exists = db
     .prepare("SELECT name FROM sqlite_master WHERE name='semantic_jobs'")
@@ -26,6 +32,12 @@ export function initializeSemanticJobs(db: Database.Database) {
     db.exec(
       "INSERT OR IGNORE INTO semantic_jobs(message_id,owner) SELECT id,owner FROM messages WHERE status='completed'",
     );
+  const columns = db.pragma("table_info(semantic_jobs)") as { name: string }[];
+  if (!columns.some((c) => c.name === "generation"))
+    db.exec(
+      "ALTER TABLE semantic_jobs ADD COLUMN generation TEXT NOT NULL DEFAULT ''",
+    );
+  migrateLegacyVectors(db);
 }
 
 export class SemanticJobs {
@@ -34,21 +46,41 @@ export class SemanticJobs {
     return this.db.transaction(() => {
       const row = this.db
         .prepare(
-          `SELECT message_id,owner,index_key FROM semantic_jobs
+          `SELECT message_id,owner,index_key,generation FROM semantic_jobs
         WHERE (state='pending' AND due_at<=?) OR (state='running' AND lease_until<?) OR (index_key<>? AND state IN ('done','failed'))
         ORDER BY due_at,message_id LIMIT 1`,
         )
         .get(time, time, indexKey) as
-        { message_id: string; owner: string; index_key: string } | undefined;
+        | {
+            message_id: string;
+            owner: string;
+            index_key: string;
+            generation: string;
+          }
+        | undefined;
       if (!row) return null;
       const token = randomUUID();
+      const generation = row.generation || randomUUID();
       this.db
         .prepare(
-          `UPDATE semantic_jobs SET state='running',token=?,lease_until=?,
+          `UPDATE semantic_jobs SET state='running',token=?,lease_until=?,generation=?,
         attempts=CASE WHEN index_key=? THEN attempts+1 ELSE 1 END,index_key=? WHERE message_id=?`,
         )
-        .run(token, time + 60000, indexKey, indexKey, row.message_id);
-      return { owner: row.owner, messageId: row.message_id, token, indexKey };
+        .run(
+          token,
+          time + 60000,
+          generation,
+          indexKey,
+          indexKey,
+          row.message_id,
+        );
+      return {
+        owner: row.owner,
+        messageId: row.message_id,
+        token,
+        indexKey,
+        generation,
+      };
     })();
   }
   complete(job: IndexJob, time = Date.now()) {

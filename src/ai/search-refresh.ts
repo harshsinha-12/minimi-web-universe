@@ -99,7 +99,7 @@ export async function rememberSearch(
   conversationId: string,
   question: string,
   sources: Source[],
-  options: { touchLookup: boolean },
+  options: { touchLookup: boolean; revision?: number },
 ) {
   const urls = sourceUrls(sources);
   if (!urls.length) return;
@@ -118,7 +118,11 @@ export async function rememberSearch(
       });
     }),
   );
-  if (options.touchLookup)
+  if (
+    options.touchLookup &&
+    (options.revision === undefined ||
+      store.owner(owner).revision === options.revision)
+  )
     store.saveSearchLookup(
       owner,
       questionKey(question, conversationId),

@@ -14,7 +14,7 @@ export async function buildContext(
   signal?: AbortSignal,
 ) {
   const historical =
-    /\b(remember|recall|earlier|previous|last|shortlist|we (discussed|compared|talked)|what did|what have|i ask|i said|since|second|third|first one|those|them)\b/i.test(
+    /\b(remember|recall|earlier|previous|last|shortlist|we (discussed|compared|talked)|what did|what have|chats?|messages?|days? ago|weeks? ago|i ask|i said|since|second|third|first one|those|them)\b/i.test(
       question,
     );
   const window = historical ? resolveDate(question, timezone, clock) : null;
@@ -44,12 +44,22 @@ export async function buildContext(
           ? AbortSignal.any([signal, AbortSignal.timeout(2500)])
           : undefined,
       );
-  const older = window ? lexical : fuseRecall(lexical, semantic);
+  // A cached value is a candidate, never authority after a concurrent edit/delete.
+  const hydrated = lexical.flatMap((m) => {
+    const current = store.message(owner, m.id);
+    return current ? [current] : [];
+  });
+  const older = window ? hydrated : fuseRecall(hydrated, semantic);
   const recent = store.messages(owner, conversationId).slice(-20);
   const combined = new Map<string, Message>();
   const memories = store
     .memories(owner)
     .filter((m) => m.sources.every((s) => store.message(owner, s.messageId)))
+    .sort(
+      (a, b) =>
+        Number(Boolean(b.userEdited)) - Number(Boolean(a.userEdited)) ||
+        b.createdAt.localeCompare(a.createdAt),
+    )
     .slice(0, 20);
   for (const memory of memories)
     for (const source of memory.sources) {
