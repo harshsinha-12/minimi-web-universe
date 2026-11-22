@@ -1,7 +1,7 @@
 import type { EvidenceAudit } from "../ai/claim-audit";
 import { pastedPageLinks } from "../ai/page-links";
 import Database from "better-sqlite3";
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { randomUUID, createHash } from "node:crypto";
 import { settings } from "../config";
@@ -9,6 +9,7 @@ import {
   databaseFile,
   persistDatabase,
   publishDatabase,
+  remoteRevision,
   restoreDatabase,
 } from "./snapshot";
 import { queueVectorCleanup } from "../memory/vector-cleanup";
@@ -1016,12 +1017,23 @@ const scope = globalThis as typeof globalThis & {
   minimiStoreVersion?: number;
 };
 let opening: Promise<Store> | null = null;
+function fileRevision(file: string) {
+  const sidecar = `${file}.rev`;
+  if (!existsSync(sidecar)) return 0;
+  return Number(readFileSync(sidecar, "utf8")) || 0;
+}
 export async function getStore() {
-  if (scope.minimiStore instanceof Store && scope.minimiStoreVersion === 5)
-    return scope.minimiStore;
+  const path = databaseFile();
+  if (scope.minimiStore instanceof Store && scope.minimiStoreVersion === 5) {
+    if ((await remoteRevision()) > fileRevision(path)) {
+      scope.minimiStore.close();
+      scope.minimiStore = undefined;
+      scope.minimiStoreVersion = 0;
+      opening = null;
+    } else return scope.minimiStore;
+  }
   if (!opening)
     opening = (async () => {
-      const path = databaseFile();
       await restoreDatabase(path);
       const store = new Store(path);
       await publishDatabase(store.db, path);

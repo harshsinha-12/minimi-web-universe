@@ -38,7 +38,16 @@ describe("durable redis database copy", () => {
     await persistDatabase(db, file);
     db.close();
     expect(saved.rev).toBe("1");
-    expect(saved.blob?.length).toBeGreaterThan(0);
+    expect(saved.blob && saved.blob.length > 0).toBe(true);
+    const published = saved.blob;
+    saved.rev = "5";
+    const { writeFileSync } = await import("node:fs");
+    writeFileSync(`${file}.rev`, "1");
+    const again = new Database(file);
+    await persistDatabase(again, file);
+    again.close();
+    expect(saved.rev).toBe("5");
+    expect(saved.blob).toBe(published);
     rmSync(file);
     rmSync(`${file}.rev`);
     await restoreDatabase(file);

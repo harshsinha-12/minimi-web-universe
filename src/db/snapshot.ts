@@ -27,6 +27,12 @@ function localRevision(file: string) {
   return Number(readFileSync(sidecar, "utf8")) || 0;
 }
 
+export async function remoteRevision() {
+  const client = await redis();
+  if (!client) return 0;
+  return Number(await client.get(revKey)) || 0;
+}
+
 export async function restoreDatabase(file: string) {
   if (file === ":memory:") return;
   const client = await redis();
@@ -46,7 +52,10 @@ export async function persistDatabase(db: Database, file: string) {
   if (!client) return;
   db.pragma("wal_checkpoint(TRUNCATE)");
   if (!existsSync(file) || statSync(file).size === 0) return;
-  const next = localRevision(file) + 1;
+  const remote = Number(await client.get(revKey)) || 0;
+  const local = localRevision(file);
+  if (remote > local) return;
+  const next = Math.max(remote, local) + 1;
   writeFileSync(`${file}.rev`, String(next));
   await client.set(dataKey, readFileSync(file).toString("base64"));
   await client.set(revKey, String(next));
