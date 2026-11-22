@@ -995,8 +995,19 @@ export default function ChatApp() {
                                   : null;
                                 if (ref?.message) {
                                   const messageId = ref.message;
+                                  const label = Array.isArray(children)
+                                    ? children.join("")
+                                    : typeof children === "string"
+                                      ? children
+                                      : "";
+                                  const fromPinecone = /pinecone/i.test(label);
                                   return (
                                     <a
+                                      className={
+                                        fromPinecone
+                                          ? "pinecone-ref"
+                                          : undefined
+                                      }
                                       href={chatReference(
                                         ref.thread,
                                         messageId,
@@ -1036,6 +1047,15 @@ export default function ChatApp() {
                                         );
                                       }}
                                     >
+                                      {fromPinecone ? (
+                                        <img
+                                          className="pinecone-mark"
+                                          src="/pinecone-logomark-black.svg"
+                                          alt=""
+                                          width={24}
+                                          height={24}
+                                        />
+                                      ) : null}
                                       {children}
                                     </a>
                                   );

@@ -1018,6 +1018,23 @@ kbd {
 .message-body a {
   color: #806591;
 }
+.message-body a.pinecone-ref {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px 2px 4px;
+  border-radius: 999px;
+  background: #f3eef6;
+  color: #5d4670;
+  font-weight: 600;
+  line-height: 1.2;
+  text-decoration: none;
+}
+.pinecone-mark {
+  width: 24px;
+  height: 24px;
+  flex: none;
+}
 .chat-actions {
   display: inline-flex;
   align-items: center;

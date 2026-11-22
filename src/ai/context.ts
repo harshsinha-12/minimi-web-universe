@@ -155,6 +155,7 @@ export async function buildContext(
     otherChats: continuesDate,
     revision: o.revision,
     semanticHits: semantic.length,
+    pineconeMessageIds: semantic.map((message) => message.id),
     pinecone: {
       enabled: semanticEnabled,
       skipped: semanticSkipped,
