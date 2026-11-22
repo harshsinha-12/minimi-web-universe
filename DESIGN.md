@@ -2,7 +2,26 @@
 
 The question is not “what does a CRM cost?” It is “which five did we shortlist last Tuesday, and has a matching price changed since?” The agent keeps apart what was said, what was remembered, and what a current page supports.
 
-**How it runs.** `npm install` then `npm run dev` starts one TypeScript Next.js app and one memory worker. The only model-facing tool is OpenAI hosted `web_search`. History, memory, and citation review are application code, so a page cannot add a tool or an instruction. The answer model defaults to `gpt-6.2-sol` at medium reasoning. Memory and the page reviewer use `gpt-5.4-mini`. Keys and model names are in `.env.example`. A cookie scopes every row. The user turn is saved before inference. Duplicate requests and overlapping answers are rejected.
+**How it runs.** `npm install` then `npm run dev` starts one TypeScript Next.js app and one memory worker. The only model-facing tool is OpenAI hosted `web_search`. History, memory, and citation review are application code, so a page cannot add a tool or an instruction.
+
+```mermaid
+flowchart TD
+    request["Validate owner and request"] --> persist["Save the user turn"]
+    persist --> raw["Read exact messages for that day or thread"]
+    raw --> derived["Load at most five Personal notes, or none in Vanilla"]
+    derived --> resolve["Resolve dates, earlier chats, and pasted pages"]
+    resolve --> needs{"Need a live page?"}
+    needs -->|"No"| direct["Answer from the transcript or notes"]
+    needs -->|"Yes"| research["One web_search pass"]
+    research --> review["Keep a claim only if the quote is on the fetched page"]
+    review --> gap{"Recheck gap and time left?"}
+    gap -->|"Yes"| research
+    gap -->|"No"| final["Publish the answer and what is unverified"]
+    direct --> save["Save the answer and queue memory work"]
+    final --> save
+```
+
+The answer model defaults to `gpt-6.2-sol` at medium reasoning. Memory and the page reviewer use `gpt-5.4-mini`. Keys and model names are in `.env.example`. A cookie scopes every row. The user turn is saved before inference. Duplicate requests and overlapping answers are rejected. SQLite runs the queries. When Redis is set, that file is copied to `minimi:db` with no key expiry and loaded on the other server if the copy is newer. Redis does not answer history queries, and it can still drop the file unless eviction is `noeviction`.
 
 **How a turn is answered.** A date, “22nd nov”, or “other chats?” reads every owned thread on that local day and keeps the surrounding exchange, so a shortlist stays in order. Exact recall does not search. A current or uncertain fact may. A recheck, an attached page, a changed saved page, or an excerpt that misses the question must. “Do not search” is obeyed. Brief is one short pass. In-depth splits the question into at most four parts and searches only the parts that need a live source. The trace names the query or the page. A recheck gets one pass and, if the reviewer finds a gap and time remains, one follow-up. A failed follow-up keeps the earlier answer. A stable question can reuse a covering excerpt for a week. A time-sensitive question searches again even when that page is unchanged, because the news may be elsewhere.
 
@@ -10,7 +29,7 @@ The question is not “what does a CRM cost?” It is “which five did we short
 
 **Memory.** The worker stores a preference, constraint, project, or decision only with a quote from an owned user message. Personal mode loads at most five notes for this question. An edited note outranks an older one. Vanilla loads none, and opens another chat only when asked. Expired and forgotten notes stay out. Deleting the message deletes the note. The transcript remains until you delete it. Synthesis is off the answer path, so a correction in the chat is visible before the worker runs.
 
-**Storage.** SQLite does transactions, FTS5, and date ranges. The file is `.data/minimi.sqlite` locally and `/tmp` on Vercel. With Redis configured, that file is copied to `minimi:db` with no key expiry and loaded when Redis is newer. Redis is not the query engine. It can still drop the copy unless eviction is `noeviction`. `MINIMI_SINGLE_USER=true` on the second server reuses the owner already in the file. The localhost cookie is a different owner.
+**Storage.** The file is `.data/minimi.sqlite` locally and `/tmp` on Vercel. `MINIMI_SINGLE_USER=true` on the second server reuses the owner already in the file. The localhost cookie is a different owner.
 
 **Rejected.** Extra model tools. Redis or a vector index as the record of what was said. Pinecone stays off. A router or a swarm. Treating the model’s own memory of a price as evidence.
 
