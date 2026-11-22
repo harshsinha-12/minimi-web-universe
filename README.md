@@ -29,6 +29,14 @@ The default answer model is `gpt-6.2-sol` with medium reasoning. Memory synthesi
 
 The visual direction draws from [minimi](https://www.projectminimi.com/) and [Wispr Flow](https://wisprflow.ai/). This is an independent challenge submission, not their product.
 
+## Measured improvements
+
+Historical rechecks now start with one bounded search pass and can use one focused follow-up for a material evidence gap. This chart shows the same three cases in one live run per version, using GPT‑6.2 Sol with medium reasoning.
+
+![Live recheck latency, baseline to rerun. PostgreSQL release 9.9 to 8.2 seconds, CRM shortlist 85.4 to 16.7 seconds, and PostgreSQL hosting 28.8 to 13.5 seconds.](docs/images/research-latency.png)
+
+Both PostgreSQL cases passed the live evaluation. A separate final CRM check took 25.6 seconds and passed every deterministic check. Two vendor pages remained unavailable, and the judge verdict was unscored because its quote did not exactly match the answer. [Evaluation methods and results](docs/EVALUATION.md#november-22-grounding-and-search-follow-up)
+
 ## Verify
 
 ```sh
