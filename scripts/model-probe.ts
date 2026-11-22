@@ -1,11 +1,12 @@
-import "../src/config";
+import { settings } from "../src/config";
 import OpenAI from "openai";
 import { normalizeResponse } from "../src/ai/evidence";
 const client = new OpenAI({ maxRetries: 0, timeout: 45000 });
 const start = Date.now();
 try {
   const response = await client.responses.create({
-    model: "gpt-6-astra",
+    model: settings.model,
+    reasoning: settings.reasoning,
     store: false,
     tools: [{ type: "web_search", external_web_access: true }],
     tool_choice: "required",
@@ -19,6 +20,7 @@ try {
     JSON.stringify(
       {
         model: response.model,
+        reasoningEffort: response.reasoning?.effort,
         status: response.status,
         elapsedMs: Date.now() - start,
         answer: n.text,

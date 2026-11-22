@@ -1,7 +1,10 @@
 import { config } from "dotenv";
 config({ path: [".env.local", ".env"], quiet: true });
+const defaultModel = "gpt-6.2-sol";
+const model = process.env.OPENAI_MODEL || defaultModel;
 export const settings = {
-  model: process.env.OPENAI_MODEL || "gpt-6-astra",
+  model,
+  reasoning: model === defaultModel ? { effort: "medium" as const } : undefined,
   memoryModel: process.env.MEMORY_MODEL || "gpt-5.4-mini",
   database: process.env.DATABASE_PATH || ".data/minimi.sqlite",
   deadline: Number(process.env.AGENT_DEADLINE_MS || 90000),
