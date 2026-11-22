@@ -38,10 +38,15 @@ export function questionUrls(question: string) {
     ),
   ].sort();
 }
-export function questionKey(question: string, conversationId: string) {
+export function questionKey(
+  question: string,
+  conversationId: string,
+  links: string[] = [],
+) {
+  const urls = [...new Set([...questionUrls(question), ...links])].sort();
   return createHash("sha256")
     .update(
-      `${conversationId}\n${normalizeQuestion(question)}\n${questionUrls(question).join("\n")}`,
+      `${conversationId}\n${normalizeQuestion(question)}\n${urls.join("\n")}`,
     )
     .digest("hex");
 }

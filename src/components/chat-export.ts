@@ -1,11 +1,22 @@
+import { annotateMarkdown } from "../ai/evidence";
 import { sourceName } from "../ai/source-label";
+import type { Citation } from "../types";
 
 type ExportMessage = {
   role: string;
   content: string;
-  citations?: { url: string; title: string }[];
+  citations?: { url: string; title: string; start?: number; end?: number }[];
   sources?: { url: string; title: string }[];
 };
+
+function visibleAnswer(message: ExportMessage) {
+  const citations = (message.citations ?? []).flatMap((citation) =>
+    typeof citation.start === "number" && typeof citation.end === "number"
+      ? [citation as Citation]
+      : [],
+  );
+  return annotateMarkdown(message.content, citations).trim();
+}
 
 function sourceLines(message: ExportMessage) {
   const seen = new Set<string>();
@@ -35,7 +46,7 @@ function sourceLines(message: ExportMessage) {
 }
 
 export function formatAnswer(message: ExportMessage) {
-  const body = message.content.trim();
+  const body = visibleAnswer(message);
   const lines = message.role === "user" ? [] : sourceLines(message);
   if (!lines.length) return body;
   return `${body}\n\nSources\n${lines.join("\n")}`.trim();

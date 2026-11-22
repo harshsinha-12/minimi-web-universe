@@ -71,6 +71,15 @@ describe("saved source reuse", () => {
     expect(
       questionKey("How much does the Pro plan cost?", "thread-a"),
     ).not.toBe(questionKey("How much does the Pro plan cost?", "thread-b"));
+    expect(
+      questionKey("Please read the attached page.", "thread", [
+        "https://example.com/a",
+      ]),
+    ).not.toBe(
+      questionKey("Please read the attached page.", "thread", [
+        "https://example.com/b",
+      ]),
+    );
     expect(isContextDependent("How much does it cost?")).toBe(true);
     expect(isContextDependent("How does SQLite WAL mode work?")).toBe(false);
   });

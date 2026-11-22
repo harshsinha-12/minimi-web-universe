@@ -21,6 +21,8 @@ describe("chat export", () => {
             {
               url: "https://example.com/pricing",
               title: "Official pricing",
+              start: 6,
+              end: 9,
             },
           ],
           sources: [
@@ -29,7 +31,7 @@ describe("chat export", () => {
         },
       ]),
     ).toBe(
-      "minimi\nPrice [1]\n\nSources\n- [Example: Official pricing](https://example.com/pricing)",
+      "minimi\nPrice [Official pricing](https://example.com/pricing)\n\nSources\n- [Example: Official pricing](https://example.com/pricing)",
     );
   });
   it("builds a safe file name from the thread title", () => {

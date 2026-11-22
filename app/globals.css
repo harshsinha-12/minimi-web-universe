@@ -433,6 +433,51 @@ nav {
     0 0 0 3px #b9a9cf12,
     0 5px 20px #4e3d2a05;
 }
+.page-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.page-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  border: 1px solid #e3d7ee;
+  background: #f7f2fb;
+  color: #6d5686;
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.page-chip a {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 240px;
+  color: inherit;
+  text-decoration: none;
+}
+.page-chip button {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: #8d7a9e;
+}
+.message:target {
+  animation: message-anchor 1.8s ease;
+}
+@keyframes message-anchor {
+  0%,
+  35% {
+    box-shadow: inset 3px 0 0 #b9a9cf;
+  }
+  100% {
+    box-shadow: inset 3px 0 0 transparent;
+  }
+}
 .composer textarea {
   width: 100%;
   resize: none;

@@ -27,6 +27,7 @@ export async function prepareSearchRefresh(args: {
   question: string;
   forceSearch: boolean;
   recheck: boolean;
+  links?: string[];
   signal: AbortSignal;
 }) {
   const empty = { reuse: false, note: "", detail: "", sources: [] as Source[] };
@@ -40,7 +41,7 @@ export async function prepareSearchRefresh(args: {
   try {
     const lookup = args.store.searchLookup(
       args.owner,
-      questionKey(args.question, args.conversationId),
+      questionKey(args.question, args.conversationId, args.links ?? []),
     );
     if (!lookup) return empty;
     const budget = AbortSignal.any([
@@ -99,7 +100,7 @@ export async function rememberSearch(
   conversationId: string,
   question: string,
   sources: Source[],
-  options: { touchLookup: boolean; revision?: number },
+  options: { touchLookup: boolean; revision?: number; links?: string[] },
 ) {
   const urls = sourceUrls(sources);
   if (!urls.length) return;
@@ -125,7 +126,7 @@ export async function rememberSearch(
   )
     store.saveSearchLookup(
       owner,
-      questionKey(question, conversationId),
+      questionKey(question, conversationId, options.links ?? []),
       urls,
       new Date().toISOString(),
     );

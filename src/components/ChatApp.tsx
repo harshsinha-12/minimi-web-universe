@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  type ClipboardEvent,
   type FormEvent,
 } from "react";
 import {
@@ -33,7 +34,9 @@ import {
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Conversation, Memory, Message, Trace } from "../types";
+import { chatReference, parseChatReference } from "../ai/chat-reference";
 import { annotateMarkdown } from "../ai/evidence";
+import { pageLinkLabel, pastedPageLinks } from "../ai/page-links";
 import { isNewConversationShortcut } from "./shortcuts";
 import { consumeEvents } from "../stream/sse";
 import { Cat } from "./Cat";
@@ -84,6 +87,35 @@ function useNarrowScreen() {
     () => false,
   );
 }
+function PageChips({
+  urls,
+  onRemove,
+}: {
+  urls: string[];
+  onRemove?: (url: string) => void;
+}) {
+  if (!urls.length) return null;
+  return (
+    <div className="page-chips">
+      {urls.map((url) => (
+        <span className="page-chip" key={url}>
+          <a href={url} target="_blank" rel="noopener noreferrer">
+            {pageLinkLabel(url)}
+          </a>
+          {onRemove && (
+            <button
+              type="button"
+              aria-label={`Remove ${pageLinkLabel(url)}`}
+              onClick={() => onRemove(url)}
+            >
+              <X size={12} />
+            </button>
+          )}
+        </span>
+      ))}
+    </div>
+  );
+}
 async function json<T>(url: string, init?: RequestInit): Promise<T> {
   const r = await fetch(url, init);
   const data = await r.json();
@@ -96,6 +128,7 @@ export default function ChatApp() {
   const [thread, setThread] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState("");
+  const [links, setLinks] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [web, setWeb] = useState(false);
   const narrow = useNarrowScreen();
@@ -125,7 +158,7 @@ export default function ChatApp() {
     setBoot(data);
     return data;
   };
-  const openThread = async (id: string) => {
+  const openThread = async (id: string, messageId?: string) => {
     if (busy || mutating) return;
     setError(null);
     setPanel(null);
@@ -135,7 +168,11 @@ export default function ChatApp() {
       `/api/conversations/${id}`,
     );
     setMessages(data.messages);
-    window.history.replaceState(null, "", `/?thread=${id}`);
+    window.history.replaceState(
+      null,
+      "",
+      messageId ? chatReference(id, messageId) : `/?thread=${id}`,
+    );
     if (window.innerWidth < 800) setSidebar(false);
   };
   useEffect(() => {
@@ -143,7 +180,10 @@ export default function ChatApp() {
       .then((data) => {
         setBoot(data);
         const id = new URLSearchParams(window.location.search).get("thread");
-        if (id) return openThread(id);
+        const ref = id
+          ? parseChatReference(`/?thread=${id}${window.location.hash}`)
+          : null;
+        if (id) return openThread(id, ref?.message);
       })
       .catch((e: Error) => setError(e.message));
     return () => abort.current?.abort();
@@ -151,11 +191,14 @@ export default function ChatApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
-    const target =
-      !busy && window.location.hash
+    const anchor =
+      !busy && window.location.hash.startsWith("#message-")
         ? document.getElementById(window.location.hash.slice(1))
-        : bottom.current;
-    target?.scrollIntoView({ behavior: busy ? "instant" : "smooth" });
+        : null;
+    (anchor ?? bottom.current)?.scrollIntoView({
+      behavior: anchor || busy ? "instant" : "smooth",
+      block: anchor ? "center" : "end",
+    });
   }, [messages, busy]);
   useEffect(() => {
     if (!panel) return;
@@ -170,6 +213,7 @@ export default function ChatApp() {
     setPanel(null);
     setSourceMessageId(null);
     setText("");
+    setLinks([]);
     setError(null);
     window.history.replaceState(null, "", "/");
     input.current?.focus();
@@ -189,11 +233,32 @@ export default function ChatApp() {
     window.addEventListener("keydown", listener);
     return () => window.removeEventListener("keydown", listener);
   }, [newThread]);
+  function attachPastedLinks(event: ClipboardEvent<HTMLTextAreaElement>) {
+    const pasted = event.clipboardData.getData("text");
+    if (!pasted) return;
+    const extracted = pastedPageLinks(pasted, links);
+    if (extracted.remainder === pasted) return;
+    event.preventDefault();
+    const start = event.currentTarget.selectionStart ?? text.length;
+    const end = event.currentTarget.selectionEnd ?? text.length;
+    const prefix = text.slice(0, start);
+    const suffix = text.slice(end);
+    const insertion = extracted.remainder;
+    const before = insertion && prefix && !/\s$/.test(prefix) ? " " : "";
+    const after = insertion && suffix && !/^\s/.test(suffix) ? " " : "";
+    setText(`${prefix}${before}${insertion}${after}${suffix}`);
+    setLinks(extracted.links);
+  }
   async function send(event?: FormEvent) {
     event?.preventDefault();
-    if (!text.trim() || busy || mutating || !boot) return;
-    const question = text.trim();
+    const extracted = pastedPageLinks(text, links);
+    const attached = extracted.links;
+    const question =
+      extracted.remainder.trim() ||
+      (attached.length ? "Please read the attached page." : "");
+    if (!question || busy || mutating || !boot) return;
     setText("");
+    setLinks([]);
     setError(null);
     setBusy(true);
     setProgress("Gathering your context");
@@ -210,8 +275,8 @@ export default function ChatApp() {
           await json<{ id: string }>("/api/conversations", { method: "POST" })
         ).id;
         setThread(id);
-        window.history.replaceState(null, "", `/?thread=${id}`);
       }
+      window.history.replaceState(null, "", `/?thread=${id}`);
       const activeId = id;
       setMessages((old) => [
         ...old,
@@ -225,6 +290,7 @@ export default function ChatApp() {
           citations: [],
           sources: [],
           runId: null,
+          ...(attached.length ? { links: attached } : {}),
         },
         {
           id: optimisticId,
@@ -247,6 +313,7 @@ export default function ChatApp() {
           message: question,
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           forceSearch: web,
+          links: attached,
         }),
         signal: controller.signal,
       });
@@ -308,7 +375,10 @@ export default function ChatApp() {
           "The connection ended before the answer completed. Your question is saved.",
         );
     } catch (e) {
-      if (!id) setText(question);
+      if (!id) {
+        setText(extracted.remainder);
+        setLinks(attached);
+      }
       if (!controller.signal.aborted)
         setError(
           e instanceof Error ? e.message : "Could not complete this answer.",
@@ -741,11 +811,9 @@ export default function ChatApp() {
                                   const source = await json<{
                                     conversationId: string;
                                   }>(`/api/messages/${s.messageId}`);
-                                  await openThread(source.conversationId);
-                                  window.history.replaceState(
-                                    null,
-                                    "",
-                                    `/?thread=${source.conversationId}#message-${s.messageId}`,
+                                  await openThread(
+                                    source.conversationId,
+                                    s.messageId,
                                   );
                                 }}
                               >
@@ -873,24 +941,79 @@ export default function ChatApp() {
                           onLoad={() => void loadTrace(m)}
                         />
                       )}
+                      {m.role === "user" && m.links?.length ? (
+                        <PageChips urls={m.links} />
+                      ) : null}
                       <div className="message-body">
                         {m.content ? (
                           <ReactMarkdown
                             remarkPlugins={[remarkGfm]}
                             components={{
-                              a: ({ href, children }) => (
-                                <a
-                                  href={href}
-                                  target={
-                                    href?.startsWith("http")
-                                      ? "_blank"
-                                      : undefined
-                                  }
-                                  rel="noopener noreferrer"
-                                >
-                                  {children}
-                                </a>
-                              ),
+                              a: ({ href, children }) => {
+                                const ref = href
+                                  ? parseChatReference(href)
+                                  : null;
+                                if (ref?.message) {
+                                  const messageId = ref.message;
+                                  return (
+                                    <a
+                                      href={chatReference(
+                                        ref.thread,
+                                        messageId,
+                                      )}
+                                      onClick={(event) => {
+                                        if (
+                                          event.metaKey ||
+                                          event.ctrlKey ||
+                                          event.shiftKey ||
+                                          event.altKey
+                                        )
+                                          return;
+                                        event.preventDefault();
+                                        const target = document.getElementById(
+                                          `message-${messageId}`,
+                                        );
+                                        if (ref.thread === thread && target) {
+                                          window.history.replaceState(
+                                            null,
+                                            "",
+                                            chatReference(
+                                              ref.thread,
+                                              messageId,
+                                            ),
+                                          );
+                                          target.scrollIntoView({
+                                            behavior: "smooth",
+                                            block: "center",
+                                          });
+                                          return;
+                                        }
+                                        void openThread(
+                                          ref.thread,
+                                          messageId,
+                                        ).catch((error: Error) =>
+                                          setError(error.message),
+                                        );
+                                      }}
+                                    >
+                                      {children}
+                                    </a>
+                                  );
+                                }
+                                return (
+                                  <a
+                                    href={href}
+                                    target={
+                                      href?.startsWith("http")
+                                        ? "_blank"
+                                        : undefined
+                                    }
+                                    rel="noopener noreferrer"
+                                  >
+                                    {children}
+                                  </a>
+                                );
+                              },
                             }}
                           >
                             {annotateMarkdown(m.content, m.citations)}
@@ -997,6 +1120,14 @@ export default function ChatApp() {
               className={`composer-section ${messages.length ? "docked" : ""}`}
             >
               <form className="composer" onSubmit={send}>
+                <PageChips
+                  urls={links}
+                  onRemove={(url) =>
+                    setLinks((current) =>
+                      current.filter((item) => item !== url),
+                    )
+                  }
+                />
                 <label className="sr-only" htmlFor="message">
                   Your message
                 </label>
@@ -1005,6 +1136,7 @@ export default function ChatApp() {
                   id="message"
                   placeholder="What’s on your mind?"
                   value={text}
+                  onPaste={attachPastedLinks}
                   onChange={(e) => setText(e.target.value)}
                   onKeyDown={(e) => {
                     if (
@@ -1060,7 +1192,7 @@ export default function ChatApp() {
                         type="submit"
                         className="send-button"
                         aria-label="Send message"
-                        disabled={!text.trim() || !boot}
+                        disabled={(!text.trim() && !links.length) || !boot}
                       >
                         <ArrowUp size={20} />
                       </button>

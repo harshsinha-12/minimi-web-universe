@@ -12,7 +12,9 @@ import type {
 import { settings } from "../../config";
 import { Store } from "../../db/store";
 import { buildContext } from "../context";
+import { groundChatReferences } from "../chat-reference";
 import { normalizeResponse } from "../evidence";
+import { attachedPageNote, resolvePageLinks } from "../page-links";
 import { qualifyUnavailableResearch } from "../qualify-research";
 import { researchPolicy } from "../policy";
 import { DateTime } from "luxon";
@@ -73,6 +75,9 @@ export async function runAgent(args: {
           ? `${context.messages.length} relevant messages found`
           : "Conversation context ready",
     );
+    const transcript = store.messages(owner, conversationId);
+    const attached = resolvePageLinks(transcript, runId, question);
+    const pageNote = attachedPageNote(attached);
     const policy = researchPolicy(question, forceSearch, context.historical);
     const recheck = policy.recheck;
     const pricingRecheck =
@@ -89,6 +94,7 @@ export async function runAgent(args: {
             question,
             forceSearch,
             recheck,
+            links: attached,
             signal,
           })
         : { reuse: false, note: "", detail: "", sources: [] };
@@ -96,7 +102,7 @@ export async function runAgent(args: {
     if (prepared.detail) stage("searching", prepared.detail);
     const searchMode = turnSearchMode({
       allow: policy.allow,
-      required: policy.required,
+      required: policy.required || attached.length > 0,
       reuse,
     });
     const client = new OpenAI({ maxRetries: 1, timeout: settings.deadline });
@@ -114,8 +120,9 @@ export async function runAgent(args: {
       pricingRecheck && !verifiedPriceHistory
         ? "The retrieved chat has no verified previous price. For each requested vendor, cite a current official pricing page. Discuss a prior vendor price or pricing change only when a dated primary source places it inside the requested period. If no such evidence exists, conclude with the missing comparison and use current pricing as a separate observation. Leave out inferences about what a page omits, such as an absent region breakdown."
         : "";
-    const instructions = `${SYSTEM}\nCurrent instant: ${new Date().toISOString()}. User timezone: ${timezone}. Current LOCAL date: ${localTime.isValid ? localTime.toFormat("cccc, d LLLL yyyy") : "unknown; use UTC"}.\nWeb search allowed for this request: ${searchMode.search}. ${reuse ? "Hosted web search is skipped because the saved pages were revalidated below." : "If disallowed, do not claim fresh verification."}\nResolved historical interval: ${context.window ? JSON.stringify(context.window) : "not specified"}.\nHistory retrieval missing: ${context.missing}. Date result truncated: ${context.dateTruncated}. If truncated, say the displayed history is partial.\n${prepared.note}\n${pricingGuidance}`;
+    const instructions = `${SYSTEM}\nCurrent instant: ${new Date().toISOString()}. User timezone: ${timezone}. Current LOCAL date: ${localTime.isValid ? localTime.toFormat("cccc, d LLLL yyyy") : "unknown; use UTC"}.\nWeb search allowed for this request: ${searchMode.search}. ${reuse ? "Hosted web search is skipped because the saved pages were revalidated below." : "If disallowed, do not claim fresh verification."}\nResolved historical interval: ${context.window ? JSON.stringify(context.window) : "not specified"}.\nHistory retrieval missing: ${context.missing}. Date result truncated: ${context.dateTruncated}. If truncated, say the displayed history is partial.\n${prepared.note}\n${pageNote}\n${pricingGuidance}`;
     const data = JSON.stringify({
+      attachedPages: attached,
       memories: context.memories.map((m) => ({
         kind: m.kind,
         text: m.text,
@@ -131,6 +138,7 @@ export async function runAgent(args: {
         text: m.content,
         sentAt: m.createdAt,
         citations: m.citations.slice(0, 12),
+        ...(m.links?.length ? { links: m.links } : {}),
         evidence: m.evidence
           ? {
               claims: m.evidence.claims,
@@ -165,11 +173,15 @@ export async function runAgent(args: {
         pass ? "checking" : "research",
         pass
           ? "Checking the remaining evidence gap"
-          : historyOnly
-            ? "Reading your earlier messages"
-            : fresh
-              ? "Checking current sources on the web"
-              : "Preparing an answer",
+          : attached.length && policy.allow
+            ? attached.length === 1
+              ? "Reading the attached page"
+              : `Reading ${attached.length} attached pages`
+            : historyOnly
+              ? "Reading your earlier messages"
+              : fresh
+                ? "Checking current sources on the web"
+                : "Preparing an answer",
       );
       const passSignal = pass
         ? AbortSignal.any([signal, AbortSignal.timeout(16000)])
@@ -311,6 +323,13 @@ export async function runAgent(args: {
       result.citations = qualified.citations;
       evidence = qualified.audit;
     }
+    const grounded = groundChatReferences(
+      result.text,
+      [...context.messages, ...transcript],
+      result.citations,
+    );
+    result.text = grounded.text;
+    result.citations = grounded.citations;
     if (fresh && result.citations.length === 0 && totalActions > 0)
       result.text +=
         "\n\nI couldn’t verify the external claims with an inline source.";
@@ -362,6 +381,7 @@ export async function runAgent(args: {
         {
           touchLookup: !reuse && !isContextDependent(question),
           revision: store.owner(owner).revision,
+          links: attached,
         },
       ).catch((error) =>
         logger.warn(
