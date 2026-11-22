@@ -354,7 +354,15 @@ export default function ChatApp() {
       });
       if (!response.ok) {
         const data = await response.json();
-        throw new Error(data.error || "Could not start this answer.");
+        const failure = data.error || "Could not start this answer.";
+        if (failure === "Conversation not found" && id) {
+          setThread(null);
+          window.history.replaceState(null, "", "/");
+          throw new Error(
+            "This conversation was not on the server yet. Your message is back in the box. Send it again.",
+          );
+        }
+        throw new Error(failure);
       }
       if (!response.body)
         throw new Error("Streaming is not available in this browser.");
@@ -412,23 +420,18 @@ export default function ChatApp() {
           "The connection ended before the answer completed. Your question is saved.",
         );
     } catch (e) {
-      if (!id) {
+      const failure =
+        e instanceof Error ? e.message : "Could not complete this answer.";
+      if (!id || failure.includes("not on the server")) {
         setText(extracted.remainder);
         setLinks(attached);
       }
-      if (!controller.signal.aborted)
-        setError(
-          e instanceof Error ? e.message : "Could not complete this answer.",
-        );
+      if (!controller.signal.aborted) setError(failure);
       setMessages((old) =>
-        old.map((m) =>
-          m.id === optimisticId
-            ? {
-                ...m,
-                status: "interrupted",
-                content: m.content || "Answer stopped. Your question is saved.",
-              }
-            : m,
+        old.filter(
+          (m) =>
+            m.id !== optimisticId &&
+            !(failure.includes("not on the server") && m.content === question),
         ),
       );
     } finally {

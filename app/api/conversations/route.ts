@@ -5,7 +5,10 @@ export async function POST(request: Request) {
   try {
     assertOrigin(request);
     const owner = await ownerSession();
-    return Response.json({ id: (await getStore()).createConversation(owner) });
+    const store = await getStore();
+    const id = store.createConversation(owner);
+    await store.flush();
+    return Response.json({ id });
   } catch {
     return Response.json(
       { error: "Could not create the conversation" },
