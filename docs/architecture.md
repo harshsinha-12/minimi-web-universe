@@ -1,12 +1,12 @@
 # Proposed architecture
 
-Updated November 11, 2026. A working implementation now follows the deployment, research, retrieval, and consolidation flows below. The detailed ER diagrams and lifecycle charts are logical design targets; the implementation mapping and remaining gaps are recorded in section 11. OpenAI hosted web search is the only model-facing tool and the only external search provider.
+Updated November 22, 2026. A working implementation follows the deployment, research, retrieval, and consolidation flows below. OpenAI hosted web search is the only model-facing tool. SQLite answers history, date, and full-text queries. When Redis is configured, the SQLite file is also stored at `minimi:db` with no key expiry and loaded when that copy is newer. Redis still caches derived context and wakes the worker. It is not the query engine, and a memory-full eviction can delete the copy unless the policy is `noeviction`.
 
 See [the step-by-step plan](../plan.md) and [the source-based MultiBagg review](multibagg-review.md).
 
 ## 1. Deployment boundary
 
-One repository/package contains a Node.js web application and a small Node.js consolidation worker, started together by `npm run dev`. SQLite is the durable authority for messages, memory versions, evidence, and pending jobs. Redis caches derived context and provides wake-up hints and short-lived coordination. The modules in later flowcharts are functions inside these processes, not separate microservices.
+One repository contains a Node.js web application and a small consolidation worker, started together by `npm run dev`. The modules in later flowcharts are functions inside these processes, not separate services.
 
 ```mermaid
 flowchart LR
@@ -16,30 +16,30 @@ flowchart LR
     subgraph gateway ["HTTP interface in the same app"]
         http["POST turns and SSE"]
     end
-    subgraph service ["One package on one host"]
+    subgraph service ["One package"]
         server["Turn orchestration and internal helpers"]
         worker["Memory consolidation worker"]
     end
-    subgraph datastore ["Storage and coordination"]
-        sqlite["SQLite transcripts, evidence, memory versions and outbox"]
-        redis["Redis derived caches and wake-up hints"]
+    subgraph datastore ["Storage"]
+        sqlite["SQLite file: transcripts, evidence, memory, outbox"]
+        redis["Redis: no-expiry copy of that file, plus cache and wake-ups"]
     end
     subgraph external ["OpenAI"]
         responses["Responses API with hosted web search"]
     end
     browser <-->|"Request and stream"| http
     http -->|"Dispatch turn"| server
-    server -->|"Read and persist"| sqlite
-    server -->|"Cache and notify"| redis
+    server -->|"Query and commit"| sqlite
+    server -->|"Save and reload the file"| redis
     worker -->|"Claim and commit"| sqlite
     worker -->|"Listen and invalidate"| redis
-    server -.->|"OpenAI: research and answer"| responses
-    worker -.->|"OpenAI: tool-free synthesis"| responses
+    server -.->|"Research and answer"| responses
+    worker -.->|"Tool-free synthesis"| responses
 ```
 
-`OPENAI_API_KEY` and Redis credentials stay in server processes. No client can issue arbitrary database queries or read another owner's conversations. Hosted search's page-opening and in-page finding actions belong to that same tool. Consolidation calls expose no tools, including no web search. The composer microphone uses a separate OpenAI transcription call; that audio is not stored and is not a model tool. Saved public source URLs can be revalidated by validators or a visible-text hash so an unchanged page can skip a repeat search in the same conversation, while a changed page, a different requested URL, or a pronoun-dependent question still forces one.
+`OPENAI_API_KEY` and Redis credentials stay in server processes. No client can issue arbitrary database queries or read another owner's conversations. Hosted search's page-opening and in-page finding actions belong to that same tool. Consolidation calls expose no tools, including no web search. The composer microphone uses a separate OpenAI transcription call; that audio is not stored and is not a model tool. Saved public source URLs can be revalidated by validators or a visible-text hash. A stable covered excerpt can skip a repeat search for a week. A changed page, a time-sensitive question, or a different URL searches again.
 
-The worker polls a durable SQLite outbox even if a Redis wake-up is lost. Redis is configured when the supplied credentials are available; connection failure falls back to SQLite reads and outbox polling. It must not lose history or prevent a turn from completing. This initial deployment assumes one host with shared access to the SQLite file, using WAL and short write transactions. Multiple hosts would require shared durable storage; Redis alone does not make local SQLite files consistent.
+The worker polls the SQLite outbox even if a Redis wake-up is lost. If Redis is down, the local file still answers. On Vercel the file lives in `/tmp` and is filled from `minimi:db` at startup. Two servers can still race on that one copy. Set `MINIMI_SINGLE_USER=true` on the second server so it reuses the owner already in the file.
 
 ## 2. Internal turn pipeline
 

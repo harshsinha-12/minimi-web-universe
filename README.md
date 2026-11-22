@@ -11,7 +11,7 @@ npm install
 npm run dev
 ```
 
-Open [localhost:3000](http://localhost:3000). The dev command starts the web app and consolidation worker together. SQLite migrations run automatically. Optional Redis credentials enable context caching and worker wake-ups; a Redis outage falls back to SQLite.
+Open [localhost:3000](http://localhost:3000). The dev command starts the web app and consolidation worker together. SQLite migrations run automatically. If Redis is configured, the database file is also copied there with no key expiry so another server can load the same chats. History queries still run in SQLite. A Redis outage falls back to the local file.
 
 The default answer model is `gpt-6.2-sol` with medium reasoning. Memory synthesis and cited-page review use `gpt-5.4-mini`. Both models are configurable. `npm run check:services` verifies model visibility and performs a temporary Redis write/read. It does not print credentials.
 
