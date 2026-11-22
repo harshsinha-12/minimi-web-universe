@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import { cookies } from "next/headers";
 import { createHash, randomBytes } from "node:crypto";
 import { getStore } from "../db/store";
@@ -15,7 +16,9 @@ export async function ownerSession() {
     });
   }
   const owner = createHash("sha256").update(token).digest("hex");
-  getStore().owner(owner);
+  const store = await getStore();
+  store.owner(owner);
+  after(() => store.flush().catch(() => {}));
   return owner;
 }
 export { assertOrigin } from "./origin";

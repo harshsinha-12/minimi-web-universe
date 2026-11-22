@@ -12,7 +12,7 @@ export async function GET(
 ) {
   const owner = await ownerSession();
   const { id } = await context.params;
-  const message = getStore().message(owner, id);
+  const message = (await getStore()).message(owner, id);
   if (!message)
     return Response.json({ error: "Message not found" }, { status: 404 });
   const sources = sourceList(message.sources, message.citations);

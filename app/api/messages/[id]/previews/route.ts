@@ -14,7 +14,7 @@ export async function GET(
 ) {
   const owner = await ownerSession();
   const { id } = await context.params;
-  const store = getStore();
+  const store = await getStore();
   const message = store.message(owner, id);
   if (!message)
     return Response.json({ error: "Message not found" }, { status: 404 });

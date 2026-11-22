@@ -8,7 +8,6 @@ import { indexNextMessage } from "./semantic";
 import { pineconeReady } from "../ai/__tools__/tool__pinecone";
 import { componentLogger } from "../server/logger";
 const log = componentLogger("memory");
-const store = getStore();
 let stopping = false;
 let busy = false;
 async function tick() {
@@ -21,6 +20,7 @@ async function tick() {
     return;
   busy = true;
   let job: Job | null = null;
+  const store = await getStore();
   try {
     job = store.claimJob();
     if (!job) return;
@@ -49,6 +49,7 @@ async function tick() {
     if (job) store.retryJob(job, "Synthesis unavailable; retry scheduled");
     log.warn({ err }, "memory synthesis failed");
   } finally {
+    if (job) await store.flush().catch(() => {});
     busy = false;
   }
 }
@@ -57,6 +58,7 @@ let indexing = false;
 async function indexTick() {
   if (stopping || indexing) return;
   indexing = true;
+  const store = await getStore();
   try {
     const cache = store.db
       .prepare("SELECT owner FROM cache_cleanup LIMIT 1")
