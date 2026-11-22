@@ -2,6 +2,10 @@
 
 Updated November 22, 2026. Older checkpoints below retain their original results. The record covers local regressions and small provider checks.
 
+## November 22 hiring walkthrough
+
+A local walkthrough exercised the four hiring scenes without a model call or API charge. It recovered the 3 November 2026 shortlist HubSpot, Pipedrive, and Attio; marked a HubSpot Starter, United States, USD, monthly, per-seat price changed from $20 to $25 and refused the same amount on an annual period as not comparable; resolved a follow-up about “this page” to `https://www.postgresql.org/docs/current/release.html`; and loaded the edited preference “Prefers the India price list” in Personal mode while Vanilla returned no profile notes. The test finishes in under two seconds inside `npm test`. It does not estimate p50, p95, or token cost. The live single-run timings below remain the latest measured model latency.
+
 ## November 22 search freshness
 
 The same saved-page fixtures decide whether a repeat question skips hosted search. A changed page always searches again. An unchanged page also searches again when the question is time-sensitive, because a new announcement can exist on a different URL. A stable question skips search only when the saved lookup is less than a week old and every content word in the question appears in the saved excerpt. An excerpt about a different product does not qualify.
