@@ -5,6 +5,8 @@ import {
   isVolatileQuestion,
   normalizeQuestion,
   questionKey,
+  excerptCoversQuestion,
+  researchPassPlan,
   searchDecision,
   turnSearchMode,
   type CheckedPage,
@@ -112,20 +114,41 @@ describe("saved source reuse", () => {
       }),
     ).toBeNull();
   });
-  it("reuses a stable unchanged page and skips hosted search", () => {
+  it("reuses a stable unchanged page when the saved quote covers the question", () => {
     const decision = searchDecision({
       question: "How does SQLite WAL mode work?",
       forceSearch: false,
       recheck: false,
       savedAt: "2026-11-11T11:00:00.000Z",
       now,
-      pages: [page("unchanged")],
+      pages: [
+        page(
+          "unchanged",
+          "SQLite WAL mode lets writers work together without blocking readers.",
+        ),
+      ],
     });
+    expect(
+      excerptCoversQuestion("How does SQLite WAL mode work?", [
+        "SQLite WAL mode lets writers work together without blocking readers.",
+      ]),
+    ).toBe(true);
     expect(decision.reuse).toBe(true);
     expect(decision.detail).toMatch(/skips a new web search/);
     expect(
       turnSearchMode({ allow: true, required: true, reuse: true }),
     ).toEqual({ search: false, toolChoice: "auto" });
+    expect(
+      researchPassPlan({
+        recheck: false,
+        search: false,
+        missingHistory: false,
+        gap: "Look for another page",
+        cited: true,
+        searched: false,
+        timeLeftMs: 40_000,
+      }),
+    ).toEqual({ followup: false, passes: 1 });
   });
   it("searches again when visible text changes, even inside the fresh window", () => {
     const decision = searchDecision({
@@ -143,17 +166,70 @@ describe("saved source reuse", () => {
     );
     expect(isVolatileQuestion("What is the latest SQLite release?")).toBe(true);
   });
-  it("does not reuse a volatile page after twenty minutes", () => {
+  it("searches again when an unchanged page can miss a new announcement", () => {
     const decision = searchDecision({
-      question: "What is the current price?",
+      question: "What is the latest SQLite release?",
       forceSearch: false,
       recheck: false,
-      savedAt: "2026-11-11T11:00:00.000Z",
+      savedAt: "2026-11-11T11:50:00.000Z",
       now,
-      pages: [page("unchanged")],
+      pages: [page("unchanged", "SQLite 3.47.0 is the latest stable release.")],
+    });
+    expect(decision.reuse).toBe(false);
+    expect(decision.detail).toMatch(/published elsewhere/);
+    expect(decision.note).toContain("UNCHANGED");
+  });
+  it("searches again when the saved quote does not cover the question", () => {
+    const decision = searchDecision({
+      question: "How does SQLite WAL mode work?",
+      forceSearch: false,
+      recheck: false,
+      savedAt: "2026-11-11T11:50:00.000Z",
+      now,
+      pages: [page("unchanged", "PostgreSQL stores rows in heap pages.")],
+    });
+    expect(decision.reuse).toBe(false);
+    expect(decision.detail).toMatch(/do not cover/);
+  });
+  it("searches again for a stable page once the saved lookup is a week old", () => {
+    const decision = searchDecision({
+      question: "How does SQLite WAL mode work?",
+      forceSearch: false,
+      recheck: false,
+      savedAt: "2026-11-01T12:00:00.000Z",
+      now,
+      pages: [
+        page(
+          "unchanged",
+          "SQLite WAL mode lets writers work together without blocking readers.",
+        ),
+      ],
     });
     expect(decision.reuse).toBe(false);
     expect(decision.detail).toMatch(/fresh search/);
+  });
+  it("uses one follow-up only for a recheck gap and one pass for the same gap otherwise", () => {
+    const gap = "The cited page does not name the billing region.";
+    const shared = {
+      search: true,
+      missingHistory: false,
+      gap,
+      cited: true,
+      searched: true,
+      timeLeftMs: 40_000,
+    };
+    expect(researchPassPlan({ ...shared, recheck: false })).toEqual({
+      followup: false,
+      passes: 1,
+    });
+    expect(researchPassPlan({ ...shared, recheck: true })).toEqual({
+      followup: true,
+      passes: 2,
+      gap,
+    });
+    expect(
+      researchPassPlan({ ...shared, recheck: true, timeLeftMs: 10_000 }),
+    ).toEqual({ followup: false, passes: 1 });
   });
   it("keeps historical rechecks on a new search", () => {
     const decision = searchDecision({

@@ -2,6 +2,12 @@
 
 Updated November 22, 2026. Older checkpoints below retain their original results. The record covers local regressions and small provider checks.
 
+## November 22 search freshness
+
+The same saved-page fixtures decide whether a repeat question skips hosted search. A changed page always searches again. An unchanged page also searches again when the question is time-sensitive, because a new announcement can exist on a different URL. A stable question skips search only when the saved lookup is less than a week old and every content word in the question appears in the saved excerpt. An excerpt about a different product does not qualify.
+
+The same review gap is compared for one pass and one follow-up. A recheck with time left for another pass takes that one follow-up. The same gap on any other question stays on the first pass. No broader speed cut was adopted: the measured shortcut was skipping search, and it fails the changed-page, new-announcement, and uncovered-quote cases. These checks are deterministic and do not estimate p50 or p95.
+
 ## November 22 grounding and search follow-up
 
 The recheck pipeline uses one hosted pass by default and allows one targeted follow-up when the cited-page reviewer finds a material gap. It records audit time separately, reserves time for review, and preserves the completed candidate when a follow-up fails or loses evidence. The response distinguishes unavailable page details from historical facts or current pricing the cited page supports. The judge receives page-check results, including failed captures, and still rejects invented evidence IDs and nonexact violation quotes.
