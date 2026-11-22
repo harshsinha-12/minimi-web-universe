@@ -203,6 +203,7 @@ const citationGap =
   "Find an official citation for the requested current fact. If the source is unavailable, explain that limit.";
 export function researchPassPlan(args: {
   recheck: boolean;
+  depth?: "brief" | "deep";
   search: boolean;
   missingHistory: boolean;
   gap: string | null;
@@ -212,7 +213,7 @@ export function researchPassPlan(args: {
 }) {
   const stop = { followup: false as const, passes: 1 };
   if (
-    !args.recheck ||
+    (!args.recheck && args.depth !== "deep") ||
     !args.search ||
     args.missingHistory ||
     args.timeLeftMs < FOLLOW_UP_RESERVE_MS

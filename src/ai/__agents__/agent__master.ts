@@ -7,6 +7,7 @@ import {
   researchPassPlan,
   turnSearchMode,
 } from "../search-cache";
+import { searchActivity } from "../search-activity";
 import { prepareSearchRefresh, rememberSearch } from "../search-refresh";
 import OpenAI from "openai";
 import type {
@@ -20,7 +21,12 @@ import { groundChatReferences } from "../chat-reference";
 import { normalizeResponse } from "../evidence";
 import { attachedPageNote, resolvePageLinks } from "../page-links";
 import { qualifyUnavailableResearch } from "../qualify-research";
-import { researchPolicy } from "../policy";
+import {
+  depthGuidance,
+  searchAvailability,
+  type AnswerDepth,
+  researchPolicy,
+} from "../policy";
 import { DateTime } from "luxon";
 import type { StreamEvent, Trace } from "../../types";
 import { logger } from "../../server/logger";
@@ -33,6 +39,7 @@ export async function runAgent(args: {
   question: string;
   timezone: string;
   forceSearch: boolean;
+  depth?: AnswerDepth;
   useSearchCache?: boolean;
   signal: AbortSignal;
   emit: (e: StreamEvent) => void;
@@ -45,6 +52,7 @@ export async function runAgent(args: {
     question,
     timezone,
     forceSearch,
+    depth = "brief",
     useSearchCache = true,
     emit,
   } = args;
@@ -55,10 +63,28 @@ export async function runAgent(args: {
     args.signal,
     AbortSignal.timeout(settings.deadline),
   ]);
+  const describedSearches = new Set<string>();
   const stage = (name: string, detail: string) => {
+    const previous = trace[trace.length - 1];
+    if (previous?.stage === name && previous.detail === detail) return;
     const e = { at: Date.now() - started, stage: name, detail };
     trace.push(e);
     emit({ type: "progress", ...e, runId });
+  };
+  const describeSearch = (item: {
+    id?: string;
+    action?: Parameters<typeof searchActivity>[0];
+  }) => {
+    const detail = searchActivity(item.action);
+    if (!detail) return;
+    if (item.id) describedSearches.add(item.id);
+    const last = trace[trace.length - 1];
+    if (last?.stage === "searching" && last.detail === "Searching the web") {
+      last.detail = detail;
+      emit({ type: "progress", ...last, runId, revise: true });
+      return;
+    }
+    stage("searching", detail);
   };
   try {
     stage("context", "Finding the relevant conversation");
@@ -86,7 +112,7 @@ export async function runAgent(args: {
     const recheck = policy.recheck;
     const pricingRecheck =
       recheck && /\b(?:pric(?:e|es|ing)|costs?|rates?)\b/i.test(question);
-    const fresh = policy.required;
+    const fresh = policy.fresh;
     const historyOnly = !policy.allow;
     const held = recheck && policy.allow;
     const prepared =
@@ -127,7 +153,7 @@ export async function runAgent(args: {
       pricingRecheck && !verifiedPriceHistory
         ? "The retrieved chat has no verified previous price. For each requested vendor, cite a current official pricing page. Discuss a prior vendor price or pricing change only when a dated primary source places it inside the requested period. If no such evidence exists, conclude with the missing comparison and use current pricing as a separate observation. Leave out inferences about what a page omits, such as an absent region breakdown."
         : "";
-    const instructions = `${SYSTEM}\nCurrent instant: ${new Date().toISOString()}. User timezone: ${timezone}. Current LOCAL date: ${localTime.isValid ? localTime.toFormat("cccc, d LLLL yyyy") : "unknown; use UTC"}.\nWeb search allowed for this request: ${searchMode.search}. ${reuse ? "Hosted web search is skipped because the saved pages were revalidated below." : "If disallowed, do not claim fresh verification."}\nResolved historical interval: ${context.window ? JSON.stringify(context.window) : "not specified"}.\nHistory retrieval missing: ${context.missing}. Date result truncated: ${context.dateTruncated}. If truncated, say the displayed history is partial.\n${prepared.note}\n${pageNote}\n${pricingGuidance}`;
+    const instructions = `${SYSTEM}\nCurrent instant: ${new Date().toISOString()}. User timezone: ${timezone}. Current LOCAL date: ${localTime.isValid ? localTime.toFormat("cccc, d LLLL yyyy") : "unknown; use UTC"}.\n${depthGuidance(depth)}\n${searchAvailability(searchMode.search, searchMode.toolChoice)}${reuse ? " Hosted web search is skipped because the saved pages were revalidated below." : ""}\nResolved historical interval: ${context.window ? JSON.stringify(context.window) : "not specified"}.\nHistory retrieval missing: ${context.missing}. Date result truncated: ${context.dateTruncated}. If truncated, say the displayed history is partial.\n${prepared.note}\n${pageNote}\n${pricingGuidance}`;
     const data = JSON.stringify({
       attachedPages: attached,
       memories: context.memories.map((m) => ({
@@ -175,7 +201,8 @@ export async function runAgent(args: {
     const baseline = context.messages.filter(
       (message) => message.role === "assistant",
     );
-    for (let pass = 0; pass < (held ? 2 : 1); pass++) {
+    const deep = depth === "deep";
+    for (let pass = 0; pass < (held || deep ? 2 : 1); pass++) {
       stage(
         pass ? "checking" : "research",
         pass
@@ -206,16 +233,25 @@ export async function runAgent(args: {
             tool_choice: searchMode.toolChoice,
             include: ["web_search_call.action.sources"],
             store: false,
-            max_tool_calls: pass ? 3 : 5,
-            max_output_tokens: held ? 4200 : 6500,
+            max_tool_calls: deep ? (pass ? 6 : 8) : pass ? 3 : 5,
+            max_output_tokens: deep ? 7000 : held ? 4200 : 6500,
             stream: true,
           },
           { signal: passSignal },
         );
         for await (const event of stream) {
-          if (event.type === "response.web_search_call.searching")
+          if (
+            event.type === "response.web_search_call.searching" &&
+            !describedSearches.has(event.item_id)
+          )
             stage("searching", "Searching the web");
-          if (event.type === "response.output_text.delta" && !held) {
+          if (
+            (event.type === "response.output_item.added" ||
+              event.type === "response.output_item.done") &&
+            event.item.type === "web_search_call"
+          )
+            describeSearch(event.item);
+          if (event.type === "response.output_text.delta" && !held && !deep) {
             firstAnswerMs ??= Date.now() - started;
             partial += event.delta;
             emit({ type: "delta", text: event.delta, runId });
@@ -298,6 +334,7 @@ export async function runAgent(args: {
       }
       const followup = researchPassPlan({
         recheck: held,
+        depth,
         search: searchMode.search,
         missingHistory: context.missing,
         gap: checked?.followup ?? null,
