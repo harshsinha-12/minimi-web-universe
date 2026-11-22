@@ -3,6 +3,15 @@ import { cookies } from "next/headers";
 import { createHash, randomBytes } from "node:crypto";
 import { getStore } from "../db/store";
 export async function ownerSession() {
+  const store = await getStore();
+  if (process.env.MINIMI_SINGLE_USER === "true") {
+    const existing = store.db.prepare("SELECT id FROM owners LIMIT 1").get() as
+      { id: string } | undefined;
+    if (existing) {
+      after(() => store.flush().catch(() => {}));
+      return existing.id;
+    }
+  }
   const jar = await cookies();
   let token = jar.get("minimi-session")?.value;
   if (!token || !/^[a-f0-9]{64}$/.test(token)) {
@@ -16,7 +25,6 @@ export async function ownerSession() {
     });
   }
   const owner = createHash("sha256").update(token).digest("hex");
-  const store = await getStore();
   store.owner(owner);
   after(() => store.flush().catch(() => {}));
   return owner;
