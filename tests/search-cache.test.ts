@@ -230,6 +230,9 @@ describe("saved source reuse", () => {
     expect(
       researchPassPlan({ ...shared, recheck: true, timeLeftMs: 10_000 }),
     ).toEqual({ followup: false, passes: 1 });
+    expect(
+      researchPassPlan({ ...shared, recheck: false, depth: "deep" }),
+    ).toEqual({ followup: true, passes: 2, gap });
   });
   it("keeps historical rechecks on a new search", () => {
     const decision = searchDecision({

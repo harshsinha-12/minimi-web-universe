@@ -130,7 +130,7 @@ export default function ChatApp() {
   const [text, setText] = useState("");
   const [links, setLinks] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
-  const [web, setWeb] = useState(false);
+  const [depth, setDepth] = useState<"brief" | "deep">("brief");
   const narrow = useNarrowScreen();
   const [sidebarChoice, setSidebar] = useState<boolean | null>(null);
   const sidebar = sidebarChoice ?? !narrow;
@@ -312,7 +312,8 @@ export default function ChatApp() {
           requestId: crypto.randomUUID(),
           message: question,
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-          forceSearch: web,
+          forceSearch: false,
+          depth,
           links: attached,
         }),
         signal: controller.signal,
@@ -331,7 +332,9 @@ export default function ChatApp() {
             detail: String(event.detail),
           };
           setProgress(step.detail);
-          trace.push(step);
+          if (event.revise && trace.at(-1)?.stage === step.stage)
+            trace[trace.length - 1] = step;
+          else trace.push(step);
           setTraces((old) => ({
             ...old,
             [optimisticId]: { trace: [...trace], metrics: {} },
@@ -1153,15 +1156,26 @@ export default function ChatApp() {
                   disabled={!boot}
                 />
                 <div className="composer-bottom">
-                  <button
-                    type="button"
-                    className={`web-toggle ${web ? "enabled" : ""}`}
-                    aria-pressed={web}
-                    onClick={() => setWeb(!web)}
+                  <div
+                    className="depth-toggle"
+                    role="group"
+                    aria-label="Answer depth"
                   >
-                    <Globe2 size={15} /> Search the web
-                    {web && <Check size={12} />}
-                  </button>
+                    <button
+                      type="button"
+                      aria-pressed={depth === "brief"}
+                      onClick={() => setDepth("brief")}
+                    >
+                      Brief
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={depth === "deep"}
+                      onClick={() => setDepth("deep")}
+                    >
+                      In-depth
+                    </button>
+                  </div>
                   <div className="composer-right">
                     <span className="model-label">
                       Thoughtful by nature <Sparkles size={12} />

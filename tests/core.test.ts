@@ -114,6 +114,10 @@ describe("search decisions", () => {
     expect(
       researchPolicy("Explain Raft consensus", false, false),
     ).toMatchObject({ allow: true, required: false }));
+  it("keeps a current question on automatic search", () =>
+    expect(
+      researchPolicy("What is the latest PostgreSQL release?", false, false),
+    ).toMatchObject({ allow: true, required: false, fresh: true }));
 });
 
 describe("durable conversation boundaries", () => {

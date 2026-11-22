@@ -500,21 +500,20 @@ nav {
   align-items: center;
   gap: 12px;
 }
-.web-toggle {
+.depth-toggle {
   display: inline-flex;
-  align-items: center;
-  gap: 6px;
   border: 1px solid #e5e2d9;
   border-radius: 6px;
+  overflow: hidden;
+}
+.depth-toggle button {
   padding: 6px 8px;
   font-size: 10px;
   color: #969085;
 }
-.web-toggle:hover,
-.web-toggle.enabled {
+.depth-toggle button[aria-pressed="true"] {
   background: #efe8f5;
   color: #806891;
-  border-color: #d9cbe3;
 }
 .composer-right {
   display: flex;
@@ -883,6 +882,10 @@ kbd {
   color: #6d675f;
   font-size: 12px;
   line-height: 1.4;
+}
+.thought-steps li > span:last-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .thought-steps li:last-child {
   padding-bottom: 0;
