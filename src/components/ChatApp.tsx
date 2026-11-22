@@ -75,6 +75,30 @@ const suggestions = [
     color: "sage",
   },
 ];
+function useStoredMode<T extends string>(
+  key: string,
+  allowed: readonly T[],
+  fallback: T,
+) {
+  const read = () => {
+    try {
+      const saved = localStorage.getItem(key);
+      return allowed.includes(saved as T) ? (saved as T) : fallback;
+    } catch {
+      return fallback;
+    }
+  };
+  const subscribe = (onChange: () => void) => {
+    window.addEventListener(key, onChange);
+    return () => window.removeEventListener(key, onChange);
+  };
+  const value = useSyncExternalStore(subscribe, read, () => fallback);
+  const setValue = (next: T) => {
+    localStorage.setItem(key, next);
+    window.dispatchEvent(new Event(key));
+  };
+  return [value, setValue] as const;
+}
 function subscribeNarrow(onChange: () => void) {
   const media = window.matchMedia("(max-width: 799px)");
   media.addEventListener("change", onChange);
@@ -130,8 +154,16 @@ export default function ChatApp() {
   const [text, setText] = useState("");
   const [links, setLinks] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
-  const [depth, setDepth] = useState<"brief" | "deep">("brief");
-  const [profile, setProfile] = useState<"personal" | "vanilla">("personal");
+  const [depth, setDepth] = useStoredMode(
+    "minimi-depth",
+    ["brief", "deep"] as const,
+    "brief",
+  );
+  const [profile, setProfile] = useStoredMode(
+    "minimi-profile",
+    ["personal", "vanilla"] as const,
+    "personal",
+  );
   const narrow = useNarrowScreen();
   const [sidebarChoice, setSidebar] = useState<boolean | null>(null);
   const sidebar = sidebarChoice ?? !narrow;

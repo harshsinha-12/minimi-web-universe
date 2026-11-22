@@ -15,11 +15,26 @@ export async function buildContext(
   signal?: AbortSignal,
   profile: ProfileMode = "personal",
 ) {
+  const recent = store.messages(owner, conversationId).slice(-20);
+  const dated = resolveDate(question, timezone, clock);
+  const continuesDate =
+    !dated &&
+    /\b(?:other|another)\s+(?:chats?|threads?|conversations?)\b|\btry again\b|^again[.!?]?$/i.test(
+      question,
+    );
+  const inherited = continuesDate
+    ? recent.reduceRight<ReturnType<typeof resolveDate>>((found, message) => {
+        if (found || message.role !== "user" || message.content === question)
+          return found;
+        return resolveDate(message.content, timezone, clock);
+      }, null)
+    : null;
+  const window = dated ?? inherited;
   const historical =
+    Boolean(window) ||
     /\b(remember|recall|earlier|previous|last|shortlist|we (discussed|compared|talked)|what did|what have|chats?|messages?|days? ago|weeks? ago|i ask|i said|since|second|third|first one|those|them)\b/i.test(
       question,
     );
-  const window = historical ? resolveDate(question, timezone, clock) : null;
   const o = store.owner(owner);
   const key = `minimi:context:v2:${profile}:${owner}:${o.revision}:${o.memory_revision}:${createHash(
     "sha256",
@@ -56,7 +71,6 @@ export async function buildContext(
     return current ? [current] : [];
   });
   const older = window ? hydrated : fuseRecall(hydrated, semantic);
-  const recent = store.messages(owner, conversationId).slice(-20);
   const combined = new Map<string, Message>();
   const memories =
     profile === "vanilla"
@@ -123,6 +137,7 @@ export async function buildContext(
         ? older.length === 0
         : older.filter((m) => m.content !== question).length === 0 &&
           recent.length <= 1),
+    otherChats: continuesDate,
     revision: o.revision,
     semanticHits: semantic.length,
   };

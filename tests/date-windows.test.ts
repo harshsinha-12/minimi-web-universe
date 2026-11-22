@@ -109,4 +109,69 @@ describe("broader historical windows", () => {
       store.close();
     }
   });
+  it("treats a bare date as a cross-chat lookup and keeps that day for other chats", async () => {
+    const store = new Store(":memory:");
+    try {
+      const earlier = store.createConversation("alice");
+      const first = store.begin(
+        "alice",
+        earlier,
+        randomUUID(),
+        "Compare HubSpot and Pipedrive.",
+        "2026-11-22T04:30:00.000Z",
+      );
+      store.finish("alice", first.run.id, "Recorded.", [], [], [], {});
+      const current = store.createConversation("alice");
+      const today = store.begin(
+        "alice",
+        current,
+        randomUUID(),
+        "22nd nov?",
+        "2026-11-22T05:00:00.000Z",
+      );
+      store.finish("alice", today.run.id, "Looking.", [], [], [], {});
+      const clockNow = new Date("2026-11-22T12:00:00Z");
+      const direct = await buildContext(
+        store,
+        "alice",
+        current,
+        "22nd nov?",
+        "Asia/Kolkata",
+        clockNow,
+        undefined,
+        "vanilla",
+      );
+      expect(direct.window?.label).toBe("22 November 2026");
+      expect(
+        direct.messages.some((message) =>
+          message.content.includes("HubSpot and Pipedrive"),
+        ),
+      ).toBe(true);
+      const follow = store.begin(
+        "alice",
+        current,
+        randomUUID(),
+        "other chats?",
+        "2026-11-22T05:05:00.000Z",
+      );
+      store.finish("alice", follow.run.id, "Looking again.", [], [], [], {});
+      const other = await buildContext(
+        store,
+        "alice",
+        current,
+        "other chats?",
+        "Asia/Kolkata",
+        clockNow,
+        undefined,
+        "vanilla",
+      );
+      expect(other.otherChats).toBe(true);
+      expect(other.window?.label).toBe("22 November 2026");
+      expect(
+        other.messages.some((message) => message.conversationId === earlier),
+      ).toBe(true);
+    } finally {
+      store.close();
+    }
+  });
 });
