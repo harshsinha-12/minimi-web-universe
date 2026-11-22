@@ -15,6 +15,7 @@ type AgentCandidate = {
   answer: string;
   history: EvalCase["history"];
   evidence: EvalCase["evidence"];
+  pageChecks: EvalCase["pageChecks"];
   checks: { name: string; passed: boolean }[];
   citations: Citation[];
   metrics: Run["metrics"];
@@ -87,6 +88,7 @@ if (!live) {
             ...test,
             history: candidate.history ?? test.history,
             evidence: candidate.evidence ?? test.evidence,
+            pageChecks: candidate.pageChecks,
           },
           candidate.answer,
         );
@@ -225,6 +227,11 @@ async function answerCase(test: EvalCase): Promise<AgentCandidate> {
       answer: message.content,
       history,
       evidence: test.research ? researchEvidence(message) : test.evidence,
+      pageChecks: message.evidence?.sources.map(({ id, url, state }) => ({
+        id,
+        url,
+        state,
+      })),
       checks,
       citations: message.citations,
       metrics: finished.metrics,

@@ -2,6 +2,20 @@
 
 Updated November 22, 2026. Older checkpoints below retain their original results. The record covers local regressions and small provider checks.
 
+## November 22 grounding and search follow-up
+
+The recheck pipeline uses one hosted pass by default and allows one targeted follow-up when the cited-page reviewer finds a material gap. It records audit time separately, reserves time for review, and preserves the completed candidate when a follow-up fails or loses evidence. The response distinguishes unavailable page details from historical facts or current pricing the cited page supports. The judge receives page-check results, including failed captures, and still rejects invented evidence IDs and nonexact violation quotes.
+
+The full research rerun used the same three cases and GPT-6.2 Sol at medium reasoning. Redis, Pinecone, and search reuse were disabled for both measurements. These are single-turn observations on live sources. The judge rubric was clarified to account for unavailable pages and equivalent citation URLs. Its scores across runs are not directly comparable.
+
+| Research case            | Baseline time | Rerun time | Hosted actions | Rerun result                                                                                                                                                                 |
+| ------------------------ | ------------: | ---------: | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PostgreSQL 16 release    |         9.9 s |      8.2 s | 1 → 1          | Passed. The page review supported the release date.                                                                                                                          |
+| CRM shortlist            |        85.4 s |     16.7 s | 16 → 3         | Recovered the exact shortlist, cited all three vendors, and withheld figures for two unavailable pages. The judge flagged a heading that implied all three had been checked. |
+| PostgreSQL hosting price |        28.8 s |     13.5 s | 4 → 2          | Passed. Cited the current Neon price and kept the earlier comparison unverified.                                                                                             |
+
+The follow-up patch also normalizes broad source-check headings when a cited page could not be captured. The frozen tests exercise that wording and the associated citation offsets. The targeted CRM run on the final code completed in 25.6 seconds with five search actions and passed every deterministic check. HubSpot and Pipedrive details remained unavailable. The judge verdict was unscored because its violation quote did not match the answer exactly. The billing-units judge calibration accepted the qualified response and rejected the invalid comparison. Individual live captures and judge verdicts remain variable.
+
 ## November 22 challenge development baseline
 
 | Command                                  | Coverage                                                                                                                                                                                                                      |

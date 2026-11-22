@@ -27,6 +27,7 @@ export async function judgeAnswer(test: EvalCase, answer: string) {
             reference: test.reference,
             history: test.history,
             evidence: test.evidence,
+            pageChecks: test.pageChecks,
             candidate: answer,
           }),
         },
@@ -40,7 +41,7 @@ export async function judgeAnswer(test: EvalCase, answer: string) {
     ...scoreVerdict(
       JSON.parse(response.output_text),
       answer,
-      test.evidence.map((e) => e.id),
+      [...test.evidence, ...(test.pageChecks ?? [])].map((e) => e.id),
     ),
     model: settings.judgeModel,
     elapsedMs: Date.now() - start,

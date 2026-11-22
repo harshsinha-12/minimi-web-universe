@@ -13,7 +13,7 @@ npm run dev
 
 Open [localhost:3000](http://localhost:3000). The dev command starts the web app and consolidation worker together. SQLite migrations run automatically. Optional Redis credentials enable context caching and worker wake-ups; a Redis outage falls back to SQLite.
 
-The default answer model is `gpt-6.2-sol` with medium reasoning. Memory synthesis and conditional coverage review use `gpt-5.4-mini`. Both models are configurable. `npm run check:services` verifies model visibility and performs a temporary Redis write/read. It does not print credentials.
+The default answer model is `gpt-6.2-sol` with medium reasoning. Memory synthesis and cited-page review use `gpt-5.4-mini`. Both models are configurable. `npm run check:services` verifies model visibility and performs a temporary Redis write/read. It does not print credentials.
 
 ## What works
 
@@ -21,7 +21,7 @@ The default answer model is `gpt-6.2-sol` with medium reasoning. Memory synthesi
 - Owner-scoped, durable messages and idempotent turns in SQLite; original message links support historical answers.
 - Cross-thread retrieval using dates, FTS5, recent context, source-linked memories, and optional Pinecone semantic recall. Relative dates use the request's local timezone, including calendar weeks, relative offsets and inclusive date ranges.
 - Live OpenAI web search is the only agent-facing tool. Internal retrieval and memory synthesis are application functions.
-- Rechecks can make up to two targeted follow-up passes after a conditional coverage review. Candidate rechecks are held until publication so provisional drafts do not appear as final answers.
+- Rechecks start with one bounded search pass. Cited-page review can request one targeted follow-up if time remains and the first result is preserved if the follow-up fails or loses evidence. The app holds rechecks until publication.
 - Independent page-support review retains fetched text snapshots, exact claim/evidence quotes and structured pricing comparisons. Expand “Page support” under an answer to inspect support and uncertainty. See [data and evidence controls](docs/DATA_AND_EVIDENCE.md).
 - The composer microphone transcribes speech with OpenAI (`TRANSCRIBE_MODEL`, default `gpt-4o-mini-transcribe`) and inserts editable text. Audio is not stored, and this call is not a chat tool.
 - Background memory consolidation with exact user-message support, versioned snapshots, applicability expiry, durable outbox, fenced leases, revision checks, bounded retries, and source exclusions for forgotten memory.

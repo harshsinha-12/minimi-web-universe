@@ -67,12 +67,13 @@ function header(
 }
 export function fetchPreviewResource(
   raw: string,
-  kind: "html" | "image" | "icon",
+  kind: "html" | "audit" | "image" | "icon",
   signal: AbortSignal,
   redirects = 0,
   validators?: { etag?: string | null; lastModified?: string | null },
 ): Promise<PreviewResource> {
   const url = previewURL(raw);
+  const html = kind === "html" || kind === "audit";
   return new Promise((resolve, reject) => {
     const request = get(
       url,
@@ -82,10 +83,9 @@ export function fetchPreviewResource(
         signal,
         headers: {
           "User-Agent": "minimi-link-preview/1.0",
-          Accept:
-            kind === "html"
-              ? "text/html"
-              : "image/avif,image/webp,image/png,image/jpeg,image/gif",
+          Accept: html
+            ? "text/html"
+            : "image/avif,image/webp,image/png,image/jpeg,image/gif",
           "Accept-Encoding": "identity",
           ...(redirects === 0 && validators?.etag
             ? { "If-None-Match": validators.etag }
@@ -143,17 +143,16 @@ export function fetchPreviewResource(
           "image/gif",
           "image/avif",
         ];
-        const allowed =
-          kind === "html"
-            ? ["text/html", "application/xhtml+xml"]
-            : kind === "icon"
-              ? [
-                  ...images,
-                  "image/x-icon",
-                  "image/vnd.microsoft.icon",
-                  "image/ico",
-                ]
-              : images;
+        const allowed = html
+          ? ["text/html", "application/xhtml+xml"]
+          : kind === "icon"
+            ? [
+                ...images,
+                "image/x-icon",
+                "image/vnd.microsoft.icon",
+                "image/ico",
+              ]
+            : images;
         if (status !== 200 || !allowed.includes(type)) {
           response.destroy();
           reject(new Error("Preview unavailable"));

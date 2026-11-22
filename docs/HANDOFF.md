@@ -26,7 +26,7 @@ Local checkout: `/Users/harshsinha/VS Code/minimi-web-universe`. Reference only:
 - Default answer model `gpt-6-astra`; memory/review/judge default `gpt-5.4-mini`. `.env.example` documents overrides.
 - `src/ai/__agents__/agent__master.ts`: bounded Responses API loop, streamed ordinary answers, held/reviewed historical rechecks, native citations, returned search artifacts, status and usage. Three maximum research passes, 90-second default deadline. Uses existing Responses implementation; do not migrate APIs merely for a refactor.
 - `src/ai/claim-audit.ts`: independent tool-free structured review against bounded fetched page snapshots; exact answer/quote/native-citation checks, persisted support records and deterministic compatible-price comparisons. See [data and evidence controls](DATA_AND_EVIDENCE.md).
-- `agent__research_review.ts`: conditional tool-free coverage review, distinct from offline eval.
+- `claim-audit.ts`: tool-free review of cited pages, with a targeted follow-up suggestion when a material gap remains.
 - `agent__memory.ts`: tool-free synthesis with exact quoted user-message sources, schema in `src/memory/schema.ts`.
 - `agent__judge.ts`: offline structured verdicts on recall, temporal reasoning, grounding and usefulness. Explicit critical violations veto an overall pass. Exact candidate quotes and valid evidence IDs are checked.
 - `src/db/store.ts`: owner-scoped original messages, conversations/runs/events, FTS5, provider artifacts, memory versions/outbox, leases/revisions/source exclusions. Database defaults `.data/minimi.sqlite`. Redis is a five-minute derived-context cache and wake-up mechanism.

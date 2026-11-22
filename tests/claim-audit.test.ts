@@ -8,11 +8,13 @@ import {
   emptyAudit,
   validateClaimProposal,
   type ClaimSupport,
+  type EvidenceAudit,
   type FactRecord,
   type SourceSnapshot,
 } from "../src/ai/claim-audit";
 import { Store } from "../src/db/store";
 import type { Message } from "../src/types";
+import { qualifyUnavailableResearch } from "../src/ai/qualify-research";
 const url = "https://example.com/pricing";
 const answer =
   "Alpha costs $20 per user per month in the US, billed monthly. [Source]";
@@ -162,17 +164,43 @@ describe("independent claim-support validation", () => {
       )[0].status,
     ).toBe("insufficient");
   });
-  it("requires extracted amounts and effective dates to appear verbatim in evidence", () => {
+  it("rejects numeric substrings and dates absent from the cited quote", () => {
     const p = proposal();
     p.claims[0].fact.value = "$9";
     expect(
       validateClaimProposal(p, answer, citations, [snapshot])[0].status,
     ).toBe("insufficient");
-    p.claims[0].fact.value = "$20";
-    p.claims[0].fact.effectiveDate = "2026-11-01" as never;
+    p.claims[0].fact.value = "$2";
     expect(
       validateClaimProposal(p, answer, citations, [snapshot])[0].status,
     ).toBe("insufficient");
+    p.claims[0].fact.value = "$20";
+    const wrongDate = { ...p.claims[0].fact, effectiveDate: "2026-11-02" };
+    expect(
+      validateClaimProposal(
+        { claims: [{ ...p.claims[0], fact: wrongDate }] },
+        answer,
+        citations,
+        [snapshot],
+      )[0].status,
+    ).toBe("insufficient");
+  });
+  it("accepts the same release day written in different unambiguous date formats", () => {
+    const p = proposal();
+    const datedFact = {
+      ...p.claims[0].fact,
+      field: "release date",
+      value: "2026-11-01",
+      effectiveDate: "November 1, 2026",
+    };
+    const claim = validateClaimProposal(
+      { claims: [{ ...p.claims[0], fact: datedFact }] },
+      answer,
+      citations,
+      [snapshot],
+    )[0];
+    expect(claim.status).toBe("supported");
+    expect(compareClaims([claim], [])).toEqual([]);
   });
   it("preserves contradictory verdicts and treats fetch failures as unavailable", () => {
     const p = proposal();
@@ -277,7 +305,15 @@ describe("audit orchestration failure handling", () => {
   }
   it("runs tool-free structured review and preserves captured pages", async () => {
     const result = await auditAnswer(
-      { ...args, client: client(JSON.stringify(proposal())) },
+      {
+        ...args,
+        client: client(
+          JSON.stringify({
+            ...proposal(),
+            followup: "Check the named vendor’s official billing terms.",
+          }),
+        ),
+      },
       async () => snapshot,
     );
     expect(result.audit).toMatchObject({
@@ -285,6 +321,63 @@ describe("audit orchestration failure handling", () => {
       sources: [snapshot],
       claims: [{ status: "supported" }],
       comparisons: [{ status: "unverified" }],
+    });
+    expect(result.followup).toBe(
+      "Check the named vendor’s official billing terms.",
+    );
+  });
+  it("audits cited pages before spending time on merely consulted URLs", async () => {
+    const fetched: string[] = [];
+    await auditAnswer(
+      {
+        ...args,
+        sources: [{ url: "https://example.com/consulted", title: "Other" }],
+        client: client(JSON.stringify(proposal())),
+      },
+      async (pageUrl) => {
+        fetched.push(pageUrl);
+        return snapshot;
+      },
+    );
+    expect(fetched).toEqual([url]);
+  });
+  it("keeps an owned transcript quote out of the web claims without shifting citation offsets", async () => {
+    const old = message([]);
+    const local = `The old chat said $15. [Chat](/?thread=${old.conversationId}#message-${old.id})`;
+    const combined = `${local}\n\n${answer}`;
+    const offset = local.length + 2;
+    const shifted = citations.map((item) => ({
+      ...item,
+      start: item.start + offset,
+      end: item.end + offset,
+    }));
+    const result = await auditAnswer(
+      {
+        ...args,
+        answer: combined,
+        citations: shifted,
+        history: [old],
+        client: {
+          responses: {
+            create: async ({ input }: { input: { content: string }[] }) => {
+              const body = JSON.parse(input[1].content);
+              expect(body.answer).toBe(
+                `${" ".repeat(local.length)}\n\n${answer}`,
+              );
+              expect(body.citations).toEqual(shifted);
+              return {
+                status: "completed",
+                output_text: JSON.stringify(proposal()),
+              };
+            },
+          },
+        } as unknown as OpenAI,
+      },
+      async () => snapshot,
+    );
+    expect(result.audit.claims[0]).toMatchObject({
+      status: "supported",
+      start: offset,
     });
   });
   it.each(["bad json", JSON.stringify({ claims: [{ madeUp: true }] })])(
@@ -380,4 +473,114 @@ describe("persisted evidence provenance", () => {
       store.close();
     }
   });
+});
+
+it("withholds pricing for an unavailable cited page while preserving the other source and offsets", () => {
+  const unavailableUrl = "https://example.com/blocked";
+  const past =
+    "Earlier shortlist: Alpha and Beta. [Chat](/?thread=one#message-two)";
+  const text = `${past}\n\nI checked each vendor’s pricing page:\nI checked the current official pricing pages:\n\n| Product | Price |\n| --- | --- |\n| Beta | $99 ([Beta](${unavailableUrl})) |\n| Alpha | ${answer} |`;
+  const alpha = {
+    ...citations[0],
+    start: text.indexOf("[Source]"),
+    end: text.indexOf("[Source]") + 8,
+  };
+  const beta = {
+    url: unavailableUrl,
+    title: "Beta",
+    start: text.indexOf("([Beta]"),
+    end: text.indexOf(" |\n| Alpha"),
+  };
+  const claim = supported();
+  const retainedClaim = {
+    ...claim,
+    start: text.indexOf(claim.claim),
+    end: text.indexOf(claim.claim) + claim.claim.length,
+  };
+  const audit = {
+    ...emptyAudit(),
+    status: "checked" as const,
+    sources: [
+      snapshot,
+      {
+        ...snapshot,
+        url: unavailableUrl,
+        state: "unavailable" as const,
+        text: "",
+      },
+    ],
+    claims: [
+      retainedClaim,
+      {
+        ...retainedClaim,
+        id: "past",
+        claim: "and Beta",
+        start: past.indexOf("and Beta"),
+        end: past.indexOf("and Beta") + "and Beta".length,
+        historical: true,
+        status: "insufficient" as const,
+      },
+    ],
+  };
+  const qualified = qualifyUnavailableResearch(
+    text,
+    [beta, alpha],
+    audit,
+    true,
+  );
+  expect(qualified.answer).toContain(past);
+  expect(qualified.answer).toContain("Official sources:");
+  expect(qualified.answer).not.toContain("I checked each");
+  expect(qualified.answer).not.toContain("I checked the current");
+  expect(qualified.answer).toContain(
+    "| Beta | I couldn’t independently verify the details",
+  );
+  expect(qualified.answer).not.toContain("$99");
+  expect(qualified.answer).toContain("| Alpha | Alpha costs $20");
+  expect(
+    qualified.citations.map(({ start, end }) =>
+      qualified.answer.slice(start, end),
+    ),
+  ).toEqual([`([example.com](${unavailableUrl}))`, "[Source]"]);
+  const [kept] = qualified.audit.claims;
+  expect(qualified.answer.slice(kept.start, kept.end)).toBe(kept.claim);
+});
+
+it("withholds an unsupported earlier pricing claim without removing the supported current price", () => {
+  const text = "Alpha costs $20, while an older listing showed $15. [Source]";
+  const historical = "an older listing showed $15.";
+  const current = supported();
+  const audit: EvidenceAudit = {
+    ...emptyAudit(),
+    status: "checked",
+    sources: [snapshot],
+    claims: [
+      {
+        ...current,
+        claim: "Alpha costs $20",
+        start: 0,
+        end: "Alpha costs $20".length,
+      },
+      {
+        ...current,
+        id: "older",
+        claim: historical,
+        start: text.indexOf(historical),
+        end: text.indexOf(historical) + historical.length,
+        status: "insufficient",
+        historical: true,
+      },
+    ],
+  };
+  const result = qualifyUnavailableResearch(
+    text,
+    [{ ...citations[0], start: text.indexOf("[Source]"), end: text.length }],
+    audit,
+    true,
+  );
+  expect(result.answer).toBe("Alpha costs $20. [Source]");
+  expect(result.audit.claims).toHaveLength(1);
+  expect(
+    result.answer.slice(result.citations[0].start, result.citations[0].end),
+  ).toBe("[Source]");
 });
