@@ -995,8 +995,18 @@ export default function ChatApp() {
                                   : null;
                                 if (ref?.message) {
                                   const messageId = ref.message;
+                                  const label = Array.isArray(children)
+                                    ? children.join("")
+                                    : typeof children === "string"
+                                      ? children
+                                      : "";
                                   return (
                                     <a
+                                      className={
+                                        /pinecone/i.test(label)
+                                          ? "pinecone-ref"
+                                          : undefined
+                                      }
                                       href={chatReference(
                                         ref.thread,
                                         messageId,

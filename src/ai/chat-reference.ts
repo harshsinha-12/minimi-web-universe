@@ -30,25 +30,39 @@ export function groundChatReferences(
   answer: string,
   messages: { id: string; conversationId: string }[],
   citations: Citation[] = [],
+  pineconeMessageIds: string[] = [],
 ) {
   const owned = new Set(
     messages.map((message) => `${message.conversationId}\n${message.id}`),
   );
-  const edits: { start: number; end: number; next: string }[] = [];
+  const pinecone = new Set(pineconeMessageIds);
+  const edits: { start: number; end: number; next: string; drop: boolean }[] =
+    [];
   for (const match of answer.matchAll(
     /\[([^\]\n]+)\]\((\/\?thread=([\w-]+)#message[-=]([\w-]+))\)/g,
   )) {
     const full = match[0];
     const label = match[1];
+    const href = match[2];
     const thread = match[3];
     const message = match[4];
-    if (match.index === undefined || owned.has(`${thread}\n${message}`))
+    if (match.index === undefined) continue;
+    if (!owned.has(`${thread}\n${message}`)) {
+      edits.push({
+        start: match.index,
+        end: match.index + full.length,
+        next: label,
+        drop: true,
+      });
       continue;
-    edits.push({
-      start: match.index,
-      end: match.index + full.length,
-      next: label,
-    });
+    }
+    if (pinecone.has(message) && !/pinecone/i.test(label))
+      edits.push({
+        start: match.index,
+        end: match.index + full.length,
+        next: `[${label} · Pinecone](${href})`,
+        drop: false,
+      });
   }
   let text = answer;
   for (const edit of [...edits].reverse())
@@ -58,7 +72,8 @@ export function groundChatReferences(
     citations: citations.flatMap((citation) => {
       if (
         edits.some(
-          (edit) => edit.start < citation.end && edit.end > citation.start,
+          (edit) =>
+            edit.drop && edit.start < citation.end && edit.end > citation.start,
         )
       )
         return [];

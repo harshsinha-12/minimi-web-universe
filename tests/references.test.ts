@@ -142,6 +142,36 @@ describe("chat message references", () => {
       end: grounded.text.indexOf("[1]") + 3,
     });
   });
+  it("labels a Pinecone history link and moves a later citation", () => {
+    const owned = `[earlier conversation](/?thread=${thread}#message-${message})`;
+    const answer = `See ${owned}, then [1]`;
+    const start = answer.indexOf("[1]");
+    const grounded = groundChatReferences(
+      answer,
+      [{ id: message, conversationId: thread }],
+      [
+        {
+          url: "https://example.com/pricing",
+          title: "Official pricing",
+          start,
+          end: start + 3,
+        },
+      ],
+      [message],
+    );
+    expect(grounded.text).toContain("earlier conversation · Pinecone");
+    expect(grounded.citations[0]).toMatchObject({
+      start: grounded.text.indexOf("[1]"),
+      end: grounded.text.indexOf("[1]") + 3,
+    });
+    const again = groundChatReferences(
+      grounded.text,
+      [{ id: message, conversationId: thread }],
+      [],
+      [message],
+    );
+    expect(again.text).toBe(grounded.text);
+  });
 });
 
 describe("visible citations", () => {
