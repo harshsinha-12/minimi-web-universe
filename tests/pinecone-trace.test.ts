@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { pineconeSaveTrace, pineconeTrace } from "../src/memory/semantic";
+import { pineconeSource } from "../src/components/thought-label";
 
 describe("Pinecone thought lines", () => {
   it("names a fetch and a save", () => {
@@ -29,5 +30,23 @@ describe("Pinecone thought lines", () => {
     ).toMatch(/off/);
     expect(pineconeSaveTrace(1, 1)).toBe("Saved 1 message to Pinecone");
     expect(pineconeSaveTrace(0, 0)).toMatch(/nothing new/);
+  });
+  it("keeps a fetch and a save for the sources panel", () => {
+    expect(
+      pineconeSource([
+        { detail: "Conversation context ready" },
+        { detail: "Fetched 4 similar messages from Pinecone" },
+        { detail: "Saved 2 messages to Pinecone" },
+        { detail: "Opening neon.com" },
+      ]),
+    ).toEqual([
+      "Fetched 4 similar messages from Pinecone",
+      "Saved 2 messages to Pinecone",
+    ]);
+    expect(
+      pineconeSource([
+        { detail: "Pinecone is off, so this turn uses SQLite only" },
+      ]),
+    ).toBeNull();
   });
 });

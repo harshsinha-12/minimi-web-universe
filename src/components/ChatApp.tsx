@@ -43,6 +43,7 @@ import { Cat } from "./Cat";
 import { formatAnswer } from "./chat-export";
 import { ChatActions } from "./ChatActions";
 import { SourcePills, SourcesSidebar } from "./SourcePills";
+import { pineconeSource } from "./thought-label";
 import { ThoughtTrace } from "./ThoughtTrace";
 import { EvidenceDetails } from "./EvidenceDetails";
 import { VoiceInput } from "./VoiceInput";
@@ -1117,11 +1118,13 @@ export default function ChatApp() {
                         <>
                           <div className="message-actions">
                             {(m.sources.length > 0 ||
-                              m.citations.length > 0) && (
+                              m.citations.length > 0 ||
+                              pineconeSource(traces[m.id]?.trace)) && (
                               <SourcePills
                                 messageId={m.id}
                                 sources={m.sources}
                                 citations={m.citations}
+                                pinecone={pineconeSource(traces[m.id]?.trace)}
                                 open={sourceMessageId === m.id}
                                 onToggle={() =>
                                   setSourceMessageId((current) =>
@@ -1351,6 +1354,7 @@ export default function ChatApp() {
             messageId={sourceMessage.id}
             sources={sourceMessage.sources}
             citations={sourceMessage.citations}
+            pinecone={pineconeSource(traces[sourceMessage.id]?.trace)}
             onClose={() => setSourceMessageId(null)}
           />
         </>
