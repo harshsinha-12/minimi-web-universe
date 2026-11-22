@@ -188,6 +188,12 @@ it("requires native primary-source citations, captured evidence, and a matching 
   expect(
     researchChecks(expected, message, 1, history).every(({ passed }) => passed),
   ).toBe(true);
+  const trackedUrl = `${pricingUrl}?utm_source=openai`;
+  const tracked = {
+    ...message,
+    citations: [{ ...captured.citations[0], url: trackedUrl }],
+  };
+  expect(researchEvidence(tracked)[0]?.url).toBe(trackedUrl);
   const wrongCitation = {
     ...message,
     citations: [

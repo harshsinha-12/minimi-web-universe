@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Comparison } from "../claim-audit";
+import type { Comparison, SourceSnapshot } from "../claim-audit";
 export type EvalCase = {
   id: string;
   question: string;
@@ -12,6 +12,7 @@ export type EvalCase = {
     at: string;
   }[];
   evidence: { id: string; url: string; excerpt: string; observedAt: string }[];
+  pageChecks?: Pick<SourceSnapshot, "id" | "url" | "state">[];
   good: string;
   bad: string;
   agent: boolean;

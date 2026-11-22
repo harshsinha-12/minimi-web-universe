@@ -3,23 +3,28 @@ import { auditPageUrl } from "../claim-audit";
 import type { EvalCase } from "./eval__schema";
 
 export function researchEvidence(message: Message): EvalCase["evidence"] {
-  const cited = new Set(
-    message.citations.map(({ url }) => auditPageUrl(url)).filter(Boolean),
+  const cited = new Map(
+    message.citations.flatMap(({ url }) => {
+      const canonical = auditPageUrl(url);
+      return canonical ? [[canonical, url] as const] : [];
+    }),
   );
-  return (message.evidence?.sources ?? [])
-    .filter(
-      (source) =>
-        source.state === "fetched" &&
-        source.text &&
-        (cited.has(auditPageUrl(source.url)) ||
-          (source.finalUrl && cited.has(auditPageUrl(source.finalUrl)))),
-    )
-    .map(({ id, url, text, observedAt }) => ({
-      id,
-      url,
-      excerpt: text,
-      observedAt,
-    }));
+  return (message.evidence?.sources ?? []).flatMap((source) => {
+    const url =
+      cited.get(auditPageUrl(source.url) ?? "") ??
+      (source.finalUrl
+        ? cited.get(auditPageUrl(source.finalUrl) ?? "")
+        : undefined);
+    if (!url || source.state !== "fetched" || !source.text) return [];
+    return [
+      {
+        id: source.id,
+        url,
+        excerpt: source.text,
+        observedAt: source.observedAt,
+      },
+    ];
+  });
 }
 
 export function researchChecks(
