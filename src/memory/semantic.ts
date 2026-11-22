@@ -63,6 +63,30 @@ export function hydrateMatches(
   }
   return [...found.values()];
 }
+export function pineconeTrace(input: {
+  enabled: boolean;
+  skipped: "date" | "conversation" | null;
+  hits: number;
+  unavailable: boolean;
+}) {
+  if (!input.enabled) return "Pinecone is off, so this turn uses SQLite only";
+  if (input.skipped === "date")
+    return "Skipped Pinecone because this question asks for a specific day";
+  if (input.skipped === "conversation")
+    return "Skipped Pinecone because this turn stays in the current conversation";
+  if (input.unavailable)
+    return "Tried to fetch from Pinecone, but the index did not answer";
+  if (input.hits === 0) return "Fetched from Pinecone; no similar messages yet";
+  const noun = input.hits === 1 ? "message" : "messages";
+  return `Fetched ${input.hits} similar ${noun} from Pinecone`;
+}
+export function pineconeSaveTrace(saved: number, found: number) {
+  if (found === 0) return "Pinecone has nothing new to save";
+  if (saved === 0) return "Pinecone save is waiting on the worker";
+  return saved === 1
+    ? "Saved 1 message to Pinecone"
+    : `Saved ${saved} messages to Pinecone`;
+}
 export async function semanticRecall(
   store: Store,
   owner: string,
@@ -79,8 +103,8 @@ export async function semanticRecall(
     );
     return hydrateMatches(store, owner, matches);
   } catch {
-    return [];
-  } // FTS/date/recent retrieval stays available when a provider is slow or down.
+    throw new Error("Pinecone query failed");
+  }
 }
 export async function indexNextMessage(
   store: Store,

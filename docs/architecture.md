@@ -26,20 +26,28 @@ flowchart LR
     end
     subgraph external ["OpenAI"]
         responses["Responses API with hosted web search"]
+        embed["Embeddings for similar messages"]
+    end
+    subgraph vectors ["Optional paraphrase index"]
+        pinecone["Pinecone dense vectors"]
     end
     browser <-->|"Request and stream"| http
     http -->|"Dispatch turn"| server
     server -->|"Query and commit"| sqlite
     server -->|"Save and reload the file"| redis
+    server -->|"Fetch similar messages"| pinecone
     worker -->|"Claim and commit"| sqlite
+    worker -->|"Save message vectors"| pinecone
     worker -->|"Listen and invalidate"| redis
     server -.->|"Research and answer"| responses
     worker -.->|"Tool-free synthesis"| responses
+    server -.->|"Embed the question"| embed
+    worker -.->|"Embed the message"| embed
 ```
 
 `OPENAI_API_KEY` and Redis credentials stay in server processes. No client can issue arbitrary database queries or read another owner's conversations. Hosted search's page-opening and in-page finding actions belong to that same tool. Consolidation calls expose no tools, including no web search. The composer microphone uses a separate OpenAI transcription call; that audio is not stored and is not a model tool. Saved public source URLs can be revalidated by validators or a visible-text hash. A stable covered excerpt can skip a repeat search for a week. A changed page, a time-sensitive question, or a different URL searches again.
 
-The worker polls the SQLite outbox even if a Redis wake-up is lost. If Redis is down, the local file still answers. On Vercel the file lives in `/tmp` and is filled from `minimi:db` at startup. Two servers can still race on that one copy. Set `MINIMI_SINGLE_USER=true` on the second server so it reuses the owner already in the file.
+The worker polls the SQLite outbox even if a Redis wake-up is lost. If Redis is down, the local file still answers. On Vercel the file lives in `/tmp` and is filled from `minimi:db` at startup. Two servers can still race on that one copy. Set `MINIMI_SINGLE_USER=true` on the second server so it reuses the owner already in the file. Pinecone is optional. The server queries dense 1536 cosine vectors while it builds context. The worker started by `npm run dev` writes the new message vectors. The deployed site can search vectors that already exist; it does not run that worker.
 
 ## 2. Internal turn pipeline
 
