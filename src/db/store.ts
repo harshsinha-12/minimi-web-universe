@@ -1,4 +1,5 @@
 import type { EvidenceAudit } from "../ai/claim-audit";
+import { pastedPageLinks } from "../ai/page-links";
 import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
@@ -26,6 +27,7 @@ type MessageRow = {
   citations: string;
   sources: string;
   run_id: string | null;
+  links: string | null;
 };
 type Owner = {
   id: string;
@@ -53,6 +55,7 @@ const mapMessage = (r: MessageRow): Message => ({
   citations: JSON.parse(r.citations),
   sources: JSON.parse(r.sources),
   runId: r.run_id,
+  ...(r.links ? { links: JSON.parse(r.links) } : {}),
 });
 
 export class Store {
@@ -95,6 +98,15 @@ export class Store {
       CREATE TABLE IF NOT EXISTS comparisons(id TEXT PRIMARY KEY,message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,owner TEXT NOT NULL,record TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS memory_overrides(id TEXT PRIMARY KEY,owner TEXT NOT NULL,kind TEXT NOT NULL,content TEXT NOT NULL,sources TEXT NOT NULL,created_at TEXT NOT NULL,version INTEGER NOT NULL);
     `);
+    this.db
+      .transaction(() => {
+        const columns = this.db.pragma("table_info(messages)") as {
+          name: string;
+        }[];
+        if (!columns.some(({ name }) => name === "links"))
+          this.db.exec("ALTER TABLE messages ADD COLUMN links TEXT");
+      })
+      .immediate();
     initializeSemanticJobs(this.db);
     // Legacy tombstones held plaintext. Keep only opaque fingerprints, including after source deletion.
     this.db.transaction(() => {
@@ -227,6 +239,7 @@ export class Store {
     requestId: string,
     content: string,
     at = now(),
+    links: string[] = [],
   ): { run: Run; duplicate: boolean } {
     return this.db.transaction(() => {
       if (!this.conversation(owner, conversationId))
@@ -271,7 +284,7 @@ export class Store {
       const messageId = randomUUID();
       this.db
         .prepare(
-          "INSERT INTO messages(id,owner,conversation_id,role,content,created_at,status,run_id) VALUES(?,?,?,?,?,?,?,?)",
+          "INSERT INTO messages(id,owner,conversation_id,role,content,created_at,status,run_id,links) VALUES(?,?,?,?,?,?,?,?,?)",
         )
         .run(
           messageId,
@@ -282,6 +295,7 @@ export class Store {
           at,
           "completed",
           id,
+          links.length ? JSON.stringify(links) : null,
         );
       this.db
         .prepare(
@@ -375,7 +389,9 @@ export class Store {
           owner,
         );
       this.db
-        .prepare("INSERT INTO messages VALUES(?,?,?,?,?,?,?,?,?,?)")
+        .prepare(
+          "INSERT INTO messages(id,owner,conversation_id,role,content,created_at,status,citations,sources,run_id) VALUES(?,?,?,?,?,?,?,?,?,?)",
+        )
         .run(
           id,
           owner,
@@ -601,11 +617,23 @@ export class Store {
       const message = this.message(owner, id);
       if (!message) throw new Error("Message not found");
       this.invalidateData(owner, [id]);
+      const extracted = pastedPageLinks(content, []).links;
+      const nextLinks =
+        message.role === "user"
+          ? extracted.length
+            ? extracted
+            : (message.links ?? [])
+          : [];
       this.db
         .prepare(
-          "UPDATE messages SET content=?,citations='[]',sources='[]' WHERE owner=? AND id=?",
+          "UPDATE messages SET content=?,citations='[]',sources='[]',links=? WHERE owner=? AND id=?",
         )
-        .run(content, owner, id);
+        .run(
+          content,
+          nextLinks.length ? JSON.stringify(nextLinks) : null,
+          owner,
+          id,
+        );
       this.db
         .prepare(
           "UPDATE semantic_jobs SET state='pending',token=NULL,lease_until=NULL,attempts=0,due_at=0,generation=? WHERE owner=? AND message_id=?",

@@ -4,6 +4,8 @@ import { getStore } from "@/db/store";
 import { runAgent } from "@/ai/__agents__/agent__master";
 import { wakeMemory } from "@/cache/redis";
 import { logger } from "@/server/logger";
+import { maxPageLinkLength, maxPageLinks, pageLink } from "@/ai/page-links";
+import { canonicalPageUrl } from "@/server/preview-fetch";
 export const runtime = "nodejs";
 export const maxDuration = 120;
 const input = z.object({
@@ -12,11 +14,24 @@ const input = z.object({
   message: z.string().trim().min(1).max(12000),
   timezone: z.string().max(80).default("UTC"),
   forceSearch: z.boolean().default(false),
+  links: z
+    .array(z.string().max(maxPageLinkLength))
+    .max(maxPageLinks)
+    .default([]),
 });
 export async function POST(request: Request) {
   try {
     assertOrigin(request);
     const body = input.parse(await request.json());
+    const normalized = body.links.map(pageLink);
+    if (normalized.some((url) => !url || !canonicalPageUrl(url)))
+      return Response.json(
+        { error: "Attach public HTTPS page links." },
+        { status: 400 },
+      );
+    const links = [
+      ...new Set(normalized.filter((url): url is string => url !== null)),
+    ];
     const owner = await ownerSession();
     const store = getStore();
     const { run, duplicate } = store.begin(
@@ -24,6 +39,8 @@ export async function POST(request: Request) {
       body.conversationId,
       body.requestId,
       body.message,
+      undefined,
+      links,
     );
     if (duplicate)
       return Response.json(

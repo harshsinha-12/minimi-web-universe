@@ -17,6 +17,7 @@ export type Message = {
   citations: Citation[];
   sources: Source[];
   runId: string | null;
+  links?: string[];
   evidence?: EvidenceAudit;
 };
 export type Conversation = {

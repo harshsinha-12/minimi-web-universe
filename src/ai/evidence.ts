@@ -53,28 +53,29 @@ export function normalizeResponse(response: Response) {
     usage: response.usage,
   };
 }
-function cutCitation(text: string, start: number, end: number) {
-  if (text[start - 1] === "(" && text[end] === ")") {
-    start -= 1;
-    end += 1;
+function fenced(text: string, index: number) {
+  const fence = /```/g;
+  let open = false;
+  for (const match of text.matchAll(fence)) {
+    if (match.index === undefined || match.index >= index) break;
+    open = !open;
   }
-  let before = text.slice(0, start);
-  let after = text.slice(end);
-  const sameLineGap =
-    !before.endsWith("\n") &&
-    !after.startsWith("\n") &&
-    /[ \t]$/.test(before) &&
-    /^[ \t]/.test(after);
-  if (sameLineGap) {
-    before = before.replace(/[ \t]+$/, "");
-    after = after.replace(/^[ \t]+/, "");
-    return `${before} ${after}`;
+  return open;
+}
+function citationMarker(citation: Citation) {
+  let label = citation.title.replace(/\s+/g, " ").trim();
+  if (!label || /https?:\/\//i.test(label)) {
+    try {
+      label = new URL(citation.url).hostname.replace(/^www\./, "");
+    } catch {
+      label = "source";
+    }
   }
-  if (/[ \t]$/.test(before) && (after === "" || after.startsWith("\n")))
-    before = before.replace(/[ \t]+$/, "");
-  if (before.endsWith("\n") && after.startsWith("\n")) after = after.slice(1);
-  else if (before.endsWith("\n") && after === "") before = before.slice(0, -1);
-  return before + after;
+  label = label.replace(/[\[\]\\]/g, "").slice(0, 80) || "source";
+  const href = citation.url.replace(/[()\s]/g, (char) =>
+    encodeURIComponent(char),
+  );
+  return `[${label}](${href})`;
 }
 export function annotateMarkdown(text: string, citations: Citation[]) {
   const sorted = [...citations]
@@ -82,12 +83,26 @@ export function annotateMarkdown(text: string, citations: Citation[]) {
       (citation) =>
         citation.start >= 0 &&
         citation.end > citation.start &&
-        citation.end <= text.length,
+        citation.end <= text.length &&
+        !fenced(text, citation.start),
     )
-    .sort((a, b) => b.start - a.start);
-  if (!sorted.length) return text;
-  return sorted.reduce(
-    (current, citation) => cutCitation(current, citation.start, citation.end),
-    text,
-  );
+    .sort((a, b) => b.start - a.start || a.end - b.end);
+  let current = text;
+  let limit = text.length;
+  for (const citation of sorted) {
+    if (citation.end > limit) continue;
+    let start = citation.start;
+    let end = citation.end;
+    if (
+      current[start - 1] === "(" &&
+      current[end] === ")" &&
+      !current.slice(start, end).includes("\n")
+    ) {
+      start -= 1;
+      end += 1;
+    }
+    current = `${current.slice(0, start)}${citationMarker(citation)}${current.slice(end)}`;
+    limit = start;
+  }
+  return current;
 }

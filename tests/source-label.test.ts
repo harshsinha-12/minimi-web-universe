@@ -74,7 +74,9 @@ describe("source pills", () => {
           end: start + 3,
         },
       ]),
-    ).toBe("Call refresh().\n    nested\nSee now\nhello  \nworld");
+    ).toBe(
+      "Call refresh().\n    nested\nSee [Example](https://example.com) now\nhello  \nworld",
+    );
   });
   it("removes the raw citation text from the answer", () => {
     const text =
@@ -89,7 +91,7 @@ describe("source pills", () => {
       },
     ];
     expect(annotateMarkdown(text, citations)).toBe(
-      "The team is in Indiranagar.",
+      "The team is in Indiranagar.\n[Job](https://www.linkedin.com/posts/job)",
     );
   });
   it("prefers a raster site icon over an SVG icon", () => {
