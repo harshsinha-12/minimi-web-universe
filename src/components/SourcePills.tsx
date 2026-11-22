@@ -17,18 +17,22 @@ export function SourcePills({
   messageId,
   sources,
   citations,
+  pinecone,
   open,
   onToggle,
 }: {
   messageId: string;
   sources: Source[];
   citations: Citation[];
+  pinecone?: string[] | null;
   open: boolean;
   onToggle: () => void;
 }) {
   const items = sourceList(sources, citations);
-  if (!items.length) return null;
-  const extra = Math.max(0, items.length - 3);
+  const total = items.length + (pinecone ? 1 : 0);
+  if (!total) return null;
+  const shown = pinecone ? 2 : 3;
+  const extra = Math.max(0, items.length - shown);
   return (
     <div className="source-cluster">
       <button
@@ -38,7 +42,8 @@ export function SourcePills({
         onClick={onToggle}
       >
         <span className="source-stack" aria-hidden="true">
-          {items.slice(0, 3).map((item, index) => (
+          {pinecone ? <PineconeMark /> : null}
+          {items.slice(0, shown).map((item, index) => (
             <PillLogo
               key={item.url}
               src={`/api/messages/${messageId}/source-icon?source=${index}`}
@@ -48,7 +53,7 @@ export function SourcePills({
         </span>
         {extra > 0 && <span className="source-extra">+{extra}</span>}
         <span>
-          {items.length} {items.length === 1 ? "Source" : "Sources"}
+          {total} {total === 1 ? "Source" : "Sources"}
         </span>
       </button>
     </div>
@@ -59,14 +64,17 @@ export function SourcesSidebar({
   messageId,
   sources,
   citations,
+  pinecone,
   onClose,
 }: {
   messageId: string;
   sources: Source[];
   citations: Citation[];
+  pinecone?: string[] | null;
   onClose: () => void;
 }) {
   const items = sourceList(sources, citations);
+  const total = items.length + (pinecone ? 1 : 0);
   const [loaded, setLoaded] = useState<{
     messageId: string;
     details: Record<number, Detail>;
@@ -91,7 +99,7 @@ export function SourcesSidebar({
   return (
     <aside className="sources-sidebar" aria-label="Sources">
       <header>
-        <strong>Sources{items.length ? ` (${items.length})` : ""}</strong>
+        <strong>Sources{total ? ` (${total})` : ""}</strong>
         <button
           type="button"
           className="icon-btn"
@@ -102,6 +110,17 @@ export function SourcesSidebar({
         </button>
       </header>
       <div className="sources-sidebar-list">
+        {pinecone ? (
+          <div className="source-card pinecone-source">
+            <PineconeMark />
+            <span className="source-card-copy">
+              <strong>Pinecone</strong>
+              {pinecone.map((line) => (
+                <em key={line}>{line}</em>
+              ))}
+            </span>
+          </div>
+        ) : null}
         {items.map((item, index) => {
           const detail = details[index];
           const name = detail?.name || sourceName(item.url, item.title);
@@ -132,6 +151,20 @@ export function SourcesSidebar({
         })}
       </div>
     </aside>
+  );
+}
+
+function PineconeMark() {
+  return (
+    // The official logomark, served from this app.
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      className="pinecone-mark"
+      src="/pinecone-logomark-black.svg"
+      alt=""
+      width={24}
+      height={24}
+    />
   );
 }
 

@@ -584,6 +584,19 @@ nav {
 .source-stack .source-pill-mark:first-child {
   margin-left: 0;
 }
+.source-stack img.pinecone-mark {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
+.source-card img.pinecone-mark {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+.pinecone-source em {
+  white-space: normal;
+}
 .source-extra {
   color: #6d567f;
   font-size: 11px;
