@@ -4,6 +4,7 @@ import { Store } from "../db/store";
 import { resolveDate } from "../time/resolve";
 import type { Message } from "../types";
 import { semanticRecall } from "../memory/semantic";
+import { rankMemories, type ProfileMode } from "./memory-rank";
 export async function buildContext(
   store: Store,
   owner: string,
@@ -12,6 +13,7 @@ export async function buildContext(
   timezone: string,
   clock = new Date(),
   signal?: AbortSignal,
+  profile: ProfileMode = "personal",
 ) {
   const historical =
     /\b(remember|recall|earlier|previous|last|shortlist|we (discussed|compared|talked)|what did|what have|chats?|messages?|days? ago|weeks? ago|i ask|i said|since|second|third|first one|those|them)\b/i.test(
@@ -19,31 +21,35 @@ export async function buildContext(
     );
   const window = historical ? resolveDate(question, timezone, clock) : null;
   const o = store.owner(owner);
-  const key = `minimi:context:v1:${owner}:${o.revision}:${o.memory_revision}:${createHash(
+  const key = `minimi:context:v2:${profile}:${owner}:${o.revision}:${o.memory_revision}:${createHash(
     "sha256",
   )
     .update(JSON.stringify([question, timezone, window]))
     .digest("hex")}`;
+  const crossThread = profile === "personal" || historical;
   // Preferences can matter without words such as "remember" or "earlier".
-  const lexical = await cached(key, () => {
-    const hits = store.history(
-      owner,
-      window ? { ...window, limit: 400 } : { query: question, limit: 30 },
-    );
-    return historical && !window && !hits.length
-      ? store.history(owner, { limit: 70 })
-      : hits;
-  });
-  const semantic = window
-    ? []
-    : await semanticRecall(
-        store,
-        owner,
-        question,
-        signal
-          ? AbortSignal.any([signal, AbortSignal.timeout(2500)])
-          : undefined,
-      );
+  const lexical = crossThread
+    ? await cached(key, () => {
+        const hits = store.history(
+          owner,
+          window ? { ...window, limit: 400 } : { query: question, limit: 30 },
+        );
+        return historical && !window && !hits.length
+          ? store.history(owner, { limit: 70 })
+          : hits;
+      })
+    : [];
+  const semantic =
+    window || !crossThread
+      ? []
+      : await semanticRecall(
+          store,
+          owner,
+          question,
+          signal
+            ? AbortSignal.any([signal, AbortSignal.timeout(2500)])
+            : undefined,
+        );
   // A cached value is a candidate, never authority after a concurrent edit/delete.
   const hydrated = lexical.flatMap((m) => {
     const current = store.message(owner, m.id);
@@ -52,15 +58,17 @@ export async function buildContext(
   const older = window ? hydrated : fuseRecall(hydrated, semantic);
   const recent = store.messages(owner, conversationId).slice(-20);
   const combined = new Map<string, Message>();
-  const memories = store
-    .memories(owner)
-    .filter((m) => m.sources.every((s) => store.message(owner, s.messageId)))
-    .sort(
-      (a, b) =>
-        Number(Boolean(b.userEdited)) - Number(Boolean(a.userEdited)) ||
-        b.createdAt.localeCompare(a.createdAt),
-    )
-    .slice(0, 20);
+  const memories =
+    profile === "vanilla"
+      ? []
+      : rankMemories(
+          store
+            .memories(owner)
+            .filter((m) =>
+              m.sources.every((s) => store.message(owner, s.messageId)),
+            ),
+          question,
+        );
   for (const memory of memories)
     for (const source of memory.sources) {
       const original = store.message(owner, source.messageId);

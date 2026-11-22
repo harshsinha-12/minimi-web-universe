@@ -15,6 +15,7 @@ const input = z.object({
   timezone: z.string().max(80).default("UTC"),
   forceSearch: z.boolean().default(false),
   depth: z.enum(["brief", "deep"]).default("brief"),
+  profile: z.enum(["personal", "vanilla"]).default("personal"),
   links: z
     .array(z.string().max(maxPageLinkLength))
     .max(maxPageLinks)
@@ -90,6 +91,7 @@ export async function POST(request: Request) {
             timezone: body.timezone,
             forceSearch: body.forceSearch,
             depth: body.depth,
+            profile: body.profile,
             signal: abort.signal,
             emit,
           });

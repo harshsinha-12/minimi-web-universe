@@ -131,6 +131,7 @@ export default function ChatApp() {
   const [links, setLinks] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [depth, setDepth] = useState<"brief" | "deep">("brief");
+  const [profile, setProfile] = useState<"personal" | "vanilla">("personal");
   const narrow = useNarrowScreen();
   const [sidebarChoice, setSidebar] = useState<boolean | null>(null);
   const sidebar = sidebarChoice ?? !narrow;
@@ -314,6 +315,7 @@ export default function ChatApp() {
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           forceSearch: false,
           depth,
+          profile,
           links: attached,
         }),
         signal: controller.signal,
@@ -1156,25 +1158,47 @@ export default function ChatApp() {
                   disabled={!boot}
                 />
                 <div className="composer-bottom">
-                  <div
-                    className="depth-toggle"
-                    role="group"
-                    aria-label="Answer depth"
-                  >
-                    <button
-                      type="button"
-                      aria-pressed={depth === "brief"}
-                      onClick={() => setDepth("brief")}
+                  <div className="composer-modes">
+                    <div
+                      className="depth-toggle"
+                      role="group"
+                      aria-label="Answer depth"
                     >
-                      Brief
-                    </button>
-                    <button
-                      type="button"
-                      aria-pressed={depth === "deep"}
-                      onClick={() => setDepth("deep")}
+                      <button
+                        type="button"
+                        aria-pressed={depth === "brief"}
+                        onClick={() => setDepth("brief")}
+                      >
+                        Brief
+                      </button>
+                      <button
+                        type="button"
+                        aria-pressed={depth === "deep"}
+                        onClick={() => setDepth("deep")}
+                      >
+                        In-depth
+                      </button>
+                    </div>
+                    <div
+                      className="depth-toggle"
+                      role="group"
+                      aria-label="Memory"
                     >
-                      In-depth
-                    </button>
+                      <button
+                        type="button"
+                        aria-pressed={profile === "personal"}
+                        onClick={() => setProfile("personal")}
+                      >
+                        Personal
+                      </button>
+                      <button
+                        type="button"
+                        aria-pressed={profile === "vanilla"}
+                        onClick={() => setProfile("vanilla")}
+                      >
+                        Vanilla
+                      </button>
+                    </div>
                   </div>
                   <div className="composer-right">
                     <span className="model-label">
