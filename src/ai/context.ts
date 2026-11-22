@@ -4,6 +4,7 @@ import { Store } from "../db/store";
 import { resolveDate } from "../time/resolve";
 import type { Message } from "../types";
 import { semanticRecall } from "../memory/semantic";
+import { pineconeReady } from "./__tools__/tool__pinecone";
 import { rankMemories, type ProfileMode } from "./memory-rank";
 export async function buildContext(
   store: Store,
@@ -54,17 +55,31 @@ export async function buildContext(
           : hits;
       })
     : [];
-  const semantic =
-    window || !crossThread
-      ? []
-      : await semanticRecall(
-          store,
-          owner,
-          question,
-          signal
-            ? AbortSignal.any([signal, AbortSignal.timeout(2500)])
-            : undefined,
-        );
+  const semanticEnabled = pineconeReady() && !process.env.VITEST;
+  let semantic: Message[] = [];
+  let semanticUnavailable = false;
+  const semanticSkipped: "date" | "conversation" | null = !semanticEnabled
+    ? null
+    : window
+      ? "date"
+      : !crossThread
+        ? "conversation"
+        : null;
+  if (semanticEnabled && !semanticSkipped) {
+    try {
+      semantic = await semanticRecall(
+        store,
+        owner,
+        question,
+        signal
+          ? AbortSignal.any([signal, AbortSignal.timeout(2500)])
+          : undefined,
+      );
+    } catch {
+      semantic = [];
+      semanticUnavailable = true;
+    }
+  }
   // A cached value is a candidate, never authority after a concurrent edit/delete.
   const hydrated = lexical.flatMap((m) => {
     const current = store.message(owner, m.id);
@@ -140,6 +155,12 @@ export async function buildContext(
     otherChats: continuesDate,
     revision: o.revision,
     semanticHits: semantic.length,
+    pinecone: {
+      enabled: semanticEnabled,
+      skipped: semanticSkipped,
+      hits: semantic.length,
+      unavailable: semanticUnavailable,
+    },
   };
 }
 

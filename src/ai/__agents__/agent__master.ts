@@ -8,6 +8,12 @@ import {
   turnSearchMode,
 } from "../search-cache";
 import { searchActivity } from "../search-activity";
+import {
+  indexNextMessage,
+  pineconeSaveTrace,
+  pineconeTrace,
+} from "../../memory/semantic";
+import { pineconeReady } from "../__tools__/tool__pinecone";
 import { prepareSearchRefresh, rememberSearch } from "../search-refresh";
 import OpenAI from "openai";
 import type {
@@ -109,6 +115,7 @@ export async function runAgent(args: {
           ? `${context.messages.length} relevant messages found`
           : "Conversation context ready",
     );
+    stage("context", pineconeTrace(context.pinecone));
     const transcript = store.messages(owner, conversationId);
     const attached = resolvePageLinks(transcript, runId, question);
     const pageNote = attachedPageNote(attached);
@@ -433,7 +440,24 @@ export async function runAgent(args: {
           "could not save source pages",
         ),
       );
-    if (message) emit({ type: "done", message, metrics, trace, runId });
+    if (message) {
+      if (pineconeReady() && !process.env.VITEST) {
+        let saved = 0;
+        let found = 0;
+        for (let n = 0; n < 2; n++) {
+          const indexed = await indexNextMessage(store);
+          if (!indexed) break;
+          found++;
+          if (indexed.indexed) saved++;
+        }
+        stage("context", pineconeSaveTrace(saved, found));
+        store.db
+          .prepare("UPDATE runs SET trace=? WHERE owner=? AND id=?")
+          .run(JSON.stringify(trace), owner, runId);
+      } else if (pineconeReady())
+        stage("context", "Queued this turn for Pinecone");
+      emit({ type: "done", message, metrics, trace, runId });
+    }
   } catch (e) {
     const interrupted = args.signal.aborted;
     const deadline = signal.aborted && !interrupted;
