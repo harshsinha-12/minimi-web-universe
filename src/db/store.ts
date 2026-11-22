@@ -5,6 +5,12 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { randomUUID, createHash } from "node:crypto";
 import { settings } from "../config";
+import {
+  databaseFile,
+  persistDatabase,
+  publishDatabase,
+  restoreDatabase,
+} from "./snapshot";
 import { queueVectorCleanup } from "../memory/vector-cleanup";
 import { initializeSemanticJobs } from "../memory/index-jobs";
 import type {
@@ -60,7 +66,10 @@ const mapMessage = (r: MessageRow): Message => ({
 
 export class Store {
   db: Database.Database;
+  private file: string;
+  private dirty = false;
   constructor(path: string) {
+    this.file = path;
     if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
     this.db = new Database(path);
     this.db.pragma("journal_mode = WAL");
@@ -108,6 +117,7 @@ export class Store {
       })
       .immediate();
     initializeSemanticJobs(this.db);
+    this.watchWrites();
     // Legacy tombstones held plaintext. Keep only opaque fingerprints, including after source deletion.
     this.db.transaction(() => {
       const rows = this.db
@@ -123,9 +133,45 @@ export class Store {
             .run(row.owner, row.fingerprint);
         }
     })();
+    this.dirty = false;
   }
   close() {
     this.db.close();
+  }
+  private watchWrites() {
+    if (this.file === ":memory:") return;
+    const db = this.db;
+    const prepare = db.prepare.bind(db);
+    db.prepare = ((sql: string) => {
+      const statement = prepare(sql);
+      if (!/^\s*(insert|update|delete|replace)/i.test(sql)) return statement;
+      const run = statement.run.bind(statement);
+      statement.run = ((...args: never[]) => {
+        const result = run(...args);
+        if (!db.inTransaction) this.dirty = true;
+        return result;
+      }) as typeof statement.run;
+      return statement;
+    }) as typeof db.prepare;
+    const transaction = db.transaction.bind(db);
+    db.transaction = ((fn: (...args: never[]) => unknown) => {
+      const wrapped = transaction(fn as never) as (...args: never[]) => unknown;
+      return (...args: never[]) => {
+        const result = wrapped(...args);
+        this.dirty = true;
+        return result;
+      };
+    }) as unknown as typeof db.transaction;
+  }
+  async flush() {
+    if (!this.dirty || this.file === ":memory:") return;
+    this.dirty = false;
+    try {
+      await persistDatabase(this.db, this.file);
+    } catch (error) {
+      this.dirty = true;
+      throw error;
+    }
   }
   owner(id: string): Owner {
     this.db.prepare("INSERT OR IGNORE INTO owners(id) VALUES(?)").run(id);
@@ -969,15 +1015,22 @@ const scope = globalThis as typeof globalThis & {
   minimiStore?: Store;
   minimiStoreVersion?: number;
 };
-export function getStore() {
-  if (
-    !scope.minimiStore ||
-    !(scope.minimiStore instanceof Store) ||
-    scope.minimiStoreVersion !== 4
-  ) {
-    scope.minimiStore?.close();
-    scope.minimiStore = new Store(settings.database);
-    scope.minimiStoreVersion = 4;
-  }
-  return scope.minimiStore;
+let opening: Promise<Store> | null = null;
+export async function getStore() {
+  if (scope.minimiStore instanceof Store && scope.minimiStoreVersion === 5)
+    return scope.minimiStore;
+  if (!opening)
+    opening = (async () => {
+      const path = databaseFile();
+      await restoreDatabase(path);
+      const store = new Store(path);
+      await publishDatabase(store.db, path);
+      scope.minimiStore = store;
+      scope.minimiStoreVersion = 5;
+      return store;
+    })().catch((error) => {
+      opening = null;
+      throw error;
+    });
+  return opening;
 }

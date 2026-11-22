@@ -9,7 +9,7 @@ export async function GET(
 ) {
   const owner = await ownerSession();
   const { id } = await context.params;
-  const store = getStore();
+  const store = await getStore();
   if (!store.conversation(owner, id))
     return Response.json({ error: "Conversation not found" }, { status: 404 });
   return Response.json({ messages: store.messages(owner, id) });
@@ -23,7 +23,7 @@ export async function DELETE(
     assertOrigin(request);
     const owner = await ownerSession();
     const { id } = await context.params;
-    const store = getStore();
+    const store = await getStore();
     store.deleteConversation(owner, id);
     await cleanupContextCache(store, owner);
     return Response.json({ ok: true });

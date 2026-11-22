@@ -11,8 +11,8 @@ export async function GET(
 ) {
   const owner = await ownerSession();
   const { id } = await context.params;
-  const row = getStore()
-    .db.prepare("SELECT conversation_id FROM messages WHERE owner=? AND id=?")
+  const row = (await getStore()).db
+    .prepare("SELECT conversation_id FROM messages WHERE owner=? AND id=?")
     .get(owner, id) as { conversation_id: string } | undefined;
   return row
     ? Response.json({ conversationId: row.conversation_id })
@@ -30,7 +30,7 @@ export async function PATCH(
       .parse(await request.json());
     const owner = await ownerSession();
     const { id } = await context.params;
-    const store = getStore();
+    const store = await getStore();
     const message = store.editMessage(owner, id, content);
     await cleanupContextCache(store, owner);
     return Response.json({ message });
@@ -46,7 +46,7 @@ export async function DELETE(
     assertOrigin(request);
     const owner = await ownerSession();
     const { id } = await context.params;
-    const store = getStore();
+    const store = await getStore();
     store.deleteMessage(owner, id);
     await cleanupContextCache(store, owner);
     return Response.json({ ok: true });

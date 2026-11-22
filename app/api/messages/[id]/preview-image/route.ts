@@ -9,7 +9,7 @@ export async function GET(
 ) {
   const owner = await ownerSession();
   const { id } = await context.params;
-  const message = getStore().message(owner, id);
+  const message = (await getStore()).message(owner, id);
   const raw = new URL(request.url).searchParams.get("source");
   const index = raw && /^[0-2]$/.test(raw) ? Number(raw) : -1;
   const source = message && previewSources(message)[index];

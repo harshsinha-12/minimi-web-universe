@@ -7,7 +7,7 @@ export async function GET(
 ) {
   const owner = await ownerSession();
   const { id } = await context.params;
-  const run = getStore().run(owner, id);
+  const run = (await getStore()).run(owner, id);
   return run
     ? Response.json(run)
     : Response.json({ error: "Run not found" }, { status: 404 });

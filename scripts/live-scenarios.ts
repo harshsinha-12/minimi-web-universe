@@ -9,7 +9,7 @@ const cookie = boot.headers.get("set-cookie")!.split(";")[0];
 const token = cookie.slice(cookie.indexOf("=") + 1);
 const owner = createHash("sha256").update(token).digest("hex");
 const headers = { "Content-Type": "application/json", Cookie: cookie };
-const store = getStore();
+const store = await getStore();
 const fixture = store.createConversation(
   owner,
   "Synthetic QA: CRM shortlist on November 3",

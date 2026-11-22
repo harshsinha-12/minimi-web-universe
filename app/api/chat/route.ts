@@ -35,7 +35,7 @@ export async function POST(request: Request) {
       ...new Set(normalized.filter((url): url is string => url !== null)),
     ];
     const owner = await ownerSession();
-    const store = getStore();
+    const store = await getStore();
     const { run, duplicate } = store.begin(
       owner,
       body.conversationId,
@@ -95,9 +95,10 @@ export async function POST(request: Request) {
             signal: abort.signal,
             emit,
           });
-          void wakeMemory(owner);
+          await wakeMemory(owner);
         } finally {
           clearInterval(heartbeat);
+          await store.flush().catch(() => {});
           if (!closed) {
             closed = true;
             controller.close();
