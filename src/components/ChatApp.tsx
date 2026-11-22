@@ -1000,10 +1000,11 @@ export default function ChatApp() {
                                     : typeof children === "string"
                                       ? children
                                       : "";
+                                  const fromPinecone = /pinecone/i.test(label);
                                   return (
                                     <a
                                       className={
-                                        /pinecone/i.test(label)
+                                        fromPinecone
                                           ? "pinecone-ref"
                                           : undefined
                                       }
@@ -1046,6 +1047,15 @@ export default function ChatApp() {
                                         );
                                       }}
                                     >
+                                      {fromPinecone ? (
+                                        <img
+                                          className="pinecone-mark"
+                                          src="/pinecone-logomark-black.svg"
+                                          alt=""
+                                          width={24}
+                                          height={24}
+                                        />
+                                      ) : null}
                                       {children}
                                     </a>
                                   );
