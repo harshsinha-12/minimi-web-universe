@@ -27,6 +27,7 @@ export async function runAgent(args: {
   question: string;
   timezone: string;
   forceSearch: boolean;
+  useSearchCache?: boolean;
   signal: AbortSignal;
   emit: (e: StreamEvent) => void;
 }) {
@@ -38,6 +39,7 @@ export async function runAgent(args: {
     question,
     timezone,
     forceSearch,
+    useSearchCache = true,
     emit,
   } = args;
   const started = Date.now();
@@ -76,17 +78,18 @@ export async function runAgent(args: {
     const fresh = policy.required;
     const historyOnly = !policy.allow;
     const held = recheck;
-    const prepared = policy.allow
-      ? await prepareSearchRefresh({
-          store,
-          owner,
-          conversationId,
-          question,
-          forceSearch,
-          recheck,
-          signal,
-        })
-      : { reuse: false, note: "", detail: "", sources: [] };
+    const prepared =
+      policy.allow && useSearchCache
+        ? await prepareSearchRefresh({
+            store,
+            owner,
+            conversationId,
+            question,
+            forceSearch,
+            recheck,
+            signal,
+          })
+        : { reuse: false, note: "", detail: "", sources: [] };
     const reuse = prepared.reuse;
     if (prepared.detail) stage("searching", prepared.detail);
     const searchMode = turnSearchMode({
@@ -151,6 +154,7 @@ export async function runAgent(args: {
       const stream = await client.responses.create(
         {
           model: settings.model,
+          reasoning: settings.reasoning,
           instructions,
           input,
           tools: searchMode.search ? webSearchTools(true, held) : [],
@@ -333,7 +337,7 @@ export async function runAgent(args: {
       null,
       evidence,
     );
-    if (message && policy.allow && result.sources.length)
+    if (message && policy.allow && useSearchCache && result.sources.length)
       void rememberSearch(
         store,
         owner,

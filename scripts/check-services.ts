@@ -1,20 +1,22 @@
-import "../src/config";
+import { settings } from "../src/config";
 import OpenAI from "openai";
 import { redis } from "../src/cache/redis";
 import { randomUUID } from "node:crypto";
 const client = new OpenAI({ maxRetries: 0, timeout: 15000 });
 try {
   const models = await client.models.list();
-  const candidates = [
-    "gpt-6-astra",
+  const candidates = new Set([
+    settings.model,
     "gpt-5.4",
     "gpt-5.4-mini",
     "gpt-5-mini",
     "gpt-4.1-mini",
-  ];
+  ]);
   console.log(
     "OpenAI: authenticated; visible candidates:",
-    candidates.filter((id) => models.data.some((m) => m.id === id)).join(", "),
+    [...candidates]
+      .filter((id) => models.data.some((m) => m.id === id))
+      .join(", "),
   );
 } catch (e) {
   console.log(

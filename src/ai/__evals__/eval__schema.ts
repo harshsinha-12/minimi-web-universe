@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { Comparison } from "../claim-audit";
 export type EvalCase = {
   id: string;
   question: string;
@@ -14,6 +15,10 @@ export type EvalCase = {
   good: string;
   bad: string;
   agent: boolean;
+  research?: {
+    primaryDomains: string[][];
+    comparison?: Comparison["status"];
+  };
 };
 const Score = z.object({
   score: z.number().int().min(0).max(4).nullable(),

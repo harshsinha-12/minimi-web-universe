@@ -10,6 +10,7 @@ export async function GET() {
     conversations: store.conversations(owner),
     memories: store.memories(owner),
     model: settings.model,
+    reasoningEffort: settings.reasoning?.effort,
     memoryEnabled: settings.memoryEnabled,
     redisConfigured: Boolean(process.env.REDIS_HOST),
   });

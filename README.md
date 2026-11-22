@@ -13,7 +13,7 @@ npm run dev
 
 Open [localhost:3000](http://localhost:3000). The dev command starts the web app and consolidation worker together. SQLite migrations run automatically. Optional Redis credentials enable context caching and worker wake-ups; a Redis outage falls back to SQLite.
 
-Default answer model: `gpt-6-astra`. Memory synthesis and conditional coverage review use `gpt-5.4-mini`. Both are configurable. `npm run check:services` verifies model visibility and performs a temporary Redis write/read. It does not print credentials.
+The default answer model is `gpt-6.2-sol` with medium reasoning. Memory synthesis and conditional coverage review use `gpt-5.4-mini`. Both models are configurable. `npm run check:services` verifies model visibility and performs a temporary Redis write/read. It does not print credentials.
 
 ## What works
 
@@ -38,7 +38,7 @@ npm run build
 npm run eval
 ```
 
-`npm run eval` runs all deterministic tests without API requests. `npm run eval:judge` calibrates the evidence-aware judge on synthetic good/bad answers; `npm run eval:agent` evaluates the production agent on isolated historical fixtures. These live evaluation commands spend API credits and write ignored reports to `.data/evals/`. Judge calibration is not an agent quality benchmark. Other live checks:
+`npm run eval` runs all deterministic tests without API requests. `npm run eval:judge` calibrates the evidence-aware judge on synthetic good and bad answers. `npm run eval:agent` evaluates historical recall through the production agent. `npm run eval:agent -- --suite=research` runs the live CRM and PostgreSQL rechecks, including domain, exact-reference and persisted-evidence checks. Add `--case=postgres-release-recheck` to run one research case. Live evals spend API credits and write ignored reports to `.data/evals/`. See the [evaluation record](docs/EVALUATION.md) for scope and results. Other live checks:
 
 ```sh
 npx tsx scripts/live-smoke.ts

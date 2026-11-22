@@ -1,6 +1,26 @@
 # Verification record
 
-Updated November 12, 2026; older checkpoints below retain their original results. This is a local engineering check, not a leaderboard result or proof of parity with leading chatbots.
+Updated November 22, 2026. Older checkpoints below retain their original results. The record covers local regressions and small provider checks.
+
+## November 22 challenge development baseline
+
+| Command                                  | Coverage                                                                                                                                                                                                                      |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run eval`                           | Keyless regressions, including frozen old and new price snapshots. These exercise the production evidence validator, persistence, and comparator for price changes, equal prices, mismatched terms, and unavailable evidence. |
+| `npm run eval:agent`                     | Four existing synthetic no-search history cases through the production agent.                                                                                                                                                 |
+| `npm run eval:agent -- --suite=research` | Three live development cases for PostgreSQL release history, a dated CRM shortlist, and a prior unverified PostgreSQL hosting price.                                                                                          |
+
+Live cases allocate a fresh in-memory database and seed synthetic history. The research suite uses hosted search and checks native official-domain citations, exact historical links, captured page evidence, and the unverified comparison record where expected. The judge sees the persisted cited-page snapshots and original message IDs. The report lists each deterministic check alongside the judge verdict and records the dated model configuration, search actions, answer and judge token usage, and agent timing. API credits are used only by the live commands. Reports stay in ignored `.data/evals/`.
+
+Observed on November 22 with `gpt-6.2-sol` at medium reasoning, Redis and Pinecone disabled for the run, and search reuse bypassed. The ordered-shortlist history case passed separately.
+
+| Research case            | Agent time | Search actions | Observed outcome                                                                                                                                                                                                                         |
+| ------------------------ | ---------: | -------------: | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PostgreSQL 16 release    |      9.9 s |              1 | Recovered the earlier answer and cited the correct release date. All deterministic checks passed. The product's audit marked no claims supported and appended a conflicting uncertainty notice. The judge rejected the resulting answer. |
+| CRM shortlist            |     85.4 s |             16 | Recovered the correct list and cited all three official domains. The run had no persisted page snapshots, and the judge verdict was unscored because its violation quote differed from the answer.                                       |
+| PostgreSQL hosting price |     28.8 s |              4 | Linked the unverified old quote and persisted an unverified comparison. The judge found several additional claims unsupported by the available page snapshot.                                                                            |
+
+These development fixtures can guide the next iteration. A locked holdout set, independent human labels, and a larger sample for meaningful latency distributions remain future work. Live prices and page access can change between runs. The frozen cases isolate deterministic evidence handling from model and search variance.
 
 ## Automated coverage
 

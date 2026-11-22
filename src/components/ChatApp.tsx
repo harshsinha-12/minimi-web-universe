@@ -48,6 +48,7 @@ type Bootstrap = {
   conversations: Conversation[];
   memories: Memory[];
   model: string;
+  reasoningEffort?: string;
   memoryEnabled: boolean;
   redisConfigured: boolean;
 };
@@ -811,7 +812,9 @@ export default function ChatApp() {
                   </div>
                 </div>
                 <p className="muted">
-                  Answer model: {boot?.model || "Loading…"} · Redis:{" "}
+                  Answer model: {boot?.model || "Loading…"}
+                  {boot?.reasoningEffort && ` (${boot.reasoningEffort})`} ·
+                  Redis:{" "}
                   {boot?.redisConfigured ? "configured" : "local fallback"}
                 </p>
               </>
