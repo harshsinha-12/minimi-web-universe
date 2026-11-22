@@ -19,6 +19,7 @@ import { Store } from "../../db/store";
 import { buildContext } from "../context";
 import { groundChatReferences } from "../chat-reference";
 import { normalizeResponse } from "../evidence";
+import { profileGuidance, type ProfileMode } from "../memory-rank";
 import { attachedPageNote, resolvePageLinks } from "../page-links";
 import { qualifyUnavailableResearch } from "../qualify-research";
 import {
@@ -40,6 +41,7 @@ export async function runAgent(args: {
   timezone: string;
   forceSearch: boolean;
   depth?: AnswerDepth;
+  profile?: ProfileMode;
   useSearchCache?: boolean;
   signal: AbortSignal;
   emit: (e: StreamEvent) => void;
@@ -53,6 +55,7 @@ export async function runAgent(args: {
     timezone,
     forceSearch,
     depth = "brief",
+    profile = "personal",
     useSearchCache = true,
     emit,
   } = args;
@@ -96,6 +99,7 @@ export async function runAgent(args: {
       timezone,
       new Date(),
       signal,
+      profile,
     );
     stage(
       "context",
@@ -153,7 +157,7 @@ export async function runAgent(args: {
       pricingRecheck && !verifiedPriceHistory
         ? "The retrieved chat has no verified previous price. For each requested vendor, cite a current official pricing page. Discuss a prior vendor price or pricing change only when a dated primary source places it inside the requested period. If no such evidence exists, conclude with the missing comparison and use current pricing as a separate observation. Leave out inferences about what a page omits, such as an absent region breakdown."
         : "";
-    const instructions = `${SYSTEM}\nCurrent instant: ${new Date().toISOString()}. User timezone: ${timezone}. Current LOCAL date: ${localTime.isValid ? localTime.toFormat("cccc, d LLLL yyyy") : "unknown; use UTC"}.\n${depthGuidance(depth)}\n${searchAvailability(searchMode.search, searchMode.toolChoice)}${reuse ? " Hosted web search is skipped because the saved pages were revalidated below." : ""}\nResolved historical interval: ${context.window ? JSON.stringify(context.window) : "not specified"}.\nHistory retrieval missing: ${context.missing}. Date result truncated: ${context.dateTruncated}. If truncated, say the displayed history is partial.\n${prepared.note}\n${pageNote}\n${pricingGuidance}`;
+    const instructions = `${SYSTEM}\nCurrent instant: ${new Date().toISOString()}. User timezone: ${timezone}. Current LOCAL date: ${localTime.isValid ? localTime.toFormat("cccc, d LLLL yyyy") : "unknown; use UTC"}.\n${depthGuidance(depth)}\n${profileGuidance(profile)}\n${searchAvailability(searchMode.search, searchMode.toolChoice)}${reuse ? " Hosted web search is skipped because the saved pages were revalidated below." : ""}\nResolved historical interval: ${context.window ? JSON.stringify(context.window) : "not specified"}.\nHistory retrieval missing: ${context.missing}. Date result truncated: ${context.dateTruncated}. If truncated, say the displayed history is partial.\n${prepared.note}\n${pageNote}\n${pricingGuidance}`;
     const data = JSON.stringify({
       attachedPages: attached,
       memories: context.memories.map((m) => ({

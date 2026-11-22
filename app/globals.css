@@ -500,6 +500,11 @@ nav {
   align-items: center;
   gap: 12px;
 }
+.composer-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
 .depth-toggle {
   display: inline-flex;
   border: 1px solid #e5e2d9;
